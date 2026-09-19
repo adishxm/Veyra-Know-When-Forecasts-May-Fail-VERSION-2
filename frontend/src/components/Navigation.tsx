@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Crosshair, Layers, Cpu, FileCode, ExternalLink, Menu, X } from 'lucide-react';
+import { Crosshair, Layers, Cpu, FileCode, ExternalLink, Menu, X, History, Compass, BarChart3 } from 'lucide-react';
 
-export type ActiveView = 'sentinel' | 'batch' | 'models' | 'docs';
+export type ActiveView = 'sentinel' | 'replay' | 'analogs' | 'metrics' | 'batch' | 'models' | 'docs';
 
 const DOCS_EXTERNAL_URL = 'https://veyra-know-when-forecasts-may-fail.onrender.com/docs';
 
 interface NavigationProps {
   view: ActiveView;
   setView: (view: ActiveView) => void;
+  onOpenProvenance?: () => void;
 }
 
-export const Navigation: React.FC<NavigationProps> = ({ view, setView }) => {
+export const Navigation: React.FC<NavigationProps> = ({ view, setView, onOpenProvenance }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navRef = useRef<HTMLElement>(null);
 
@@ -49,6 +50,12 @@ export const Navigation: React.FC<NavigationProps> = ({ view, setView }) => {
         <span className="mobile-current-view">
           {view === 'sentinel'
             ? 'Reliability Sentinel'
+            : view === 'replay'
+            ? 'Historical Replay'
+            : view === 'analogs'
+            ? 'Analog Explorer'
+            : view === 'metrics'
+            ? 'Research Metrics'
             : view === 'batch'
             ? 'Batch Evaluation'
             : view === 'models'
@@ -70,6 +77,52 @@ export const Navigation: React.FC<NavigationProps> = ({ view, setView }) => {
           </button>
         </div>
 
+        {/* Replay View (SIH §20 Demo Mode) */}
+        <div className="dropdown">
+          <button
+            type="button"
+            className={view === 'replay' ? 'active' : ''}
+            onClick={() => handleSelectView('replay')}
+          >
+            <History size={16} /> Historical Replay
+            <span
+              style={{
+                marginLeft: '6px',
+                background: '#ffd200',
+                color: '#002b49',
+                padding: '2px 6px',
+                borderRadius: '8px',
+                fontSize: '0.68rem',
+                fontWeight: 800,
+              }}
+            >
+              §20 Demo
+            </span>
+          </button>
+        </div>
+
+        {/* Analog Explorer */}
+        <div className="dropdown">
+          <button
+            type="button"
+            className={view === 'analogs' ? 'active' : ''}
+            onClick={() => handleSelectView('analogs')}
+          >
+            <Compass size={16} /> Analog Explorer
+          </button>
+        </div>
+
+        {/* Research Metrics (§18.1) */}
+        <div className="dropdown">
+          <button
+            type="button"
+            className={view === 'metrics' ? 'active' : ''}
+            onClick={() => handleSelectView('metrics')}
+          >
+            <BarChart3 size={16} /> Research Metrics
+          </button>
+        </div>
+
         {/* Batch Evaluation (25 Stations) Direct Button */}
         <div className="dropdown">
           <button
@@ -78,20 +131,6 @@ export const Navigation: React.FC<NavigationProps> = ({ view, setView }) => {
             onClick={() => handleSelectView('batch')}
           >
             <Layers size={16} /> Batch Evaluation
-            <span
-              style={{
-                marginLeft: '6px',
-                background: '#ffd200',
-                color: '#002b49',
-                padding: '2px 7px',
-                borderRadius: '10px',
-                fontSize: '0.72rem',
-                fontWeight: 800,
-                letterSpacing: '0.02em',
-              }}
-            >
-              25 Stations
-            </span>
           </button>
         </div>
 
@@ -102,7 +141,7 @@ export const Navigation: React.FC<NavigationProps> = ({ view, setView }) => {
             className={view === 'models' ? 'active' : ''}
             onClick={() => handleSelectView('models')}
           >
-            <Cpu size={16} /> Model Registry (E0–E4)
+            <Cpu size={16} /> Model Registry
           </button>
         </div>
 
@@ -116,6 +155,23 @@ export const Navigation: React.FC<NavigationProps> = ({ view, setView }) => {
             <FileCode size={16} /> API Docs
           </button>
         </div>
+
+        {/* Provenance Drawer Button */}
+        {onOpenProvenance && (
+          <div className="dropdown">
+            <button
+              type="button"
+              onClick={onOpenProvenance}
+              style={{
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                color: 'var(--noaa-white)',
+              }}
+            >
+              Lineage &amp; Provenance
+            </button>
+          </div>
+        )}
 
         {/* External API Docs Link */}
         <div className="nav-external-link">
@@ -134,3 +190,4 @@ export const Navigation: React.FC<NavigationProps> = ({ view, setView }) => {
 };
 
 export default Navigation;
+

@@ -8,6 +8,11 @@ import { VerificationPanel } from './components/VerificationPanel';
 import { BatchPanel } from './components/BatchPanel';
 import { ModelCatalog } from './components/ModelCatalog';
 import { ApiDocsView } from './components/ApiDocsView';
+import { ReplayView } from './components/ReplayView';
+import { AnalogExplorer } from './components/AnalogExplorer';
+import { ResearchMetrics } from './components/ResearchMetrics';
+import { ProvenanceDrawer } from './components/ProvenanceDrawer';
+import { BaselineToggle } from './components/BaselineToggle';
 import { apiClient } from './api/client';
 import { BENCHMARK_LOCATIONS } from './data/locations';
 import {
@@ -22,6 +27,7 @@ export const App: React.FC = () => {
   const [isBackendHealthy, setIsBackendHealthy] = useState<boolean | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isProvenanceOpen, setIsProvenanceOpen] = useState<boolean>(false);
 
   // Form State: Initialize to first benchmark station (Delhi)
   const [location, setLocation] = useState<string>(BENCHMARK_LOCATIONS[0].name);
@@ -139,7 +145,11 @@ export const App: React.FC = () => {
       <AgencyBanner isBackendHealthy={isBackendHealthy} utcTime={utcTime} />
 
       {/* Navigation */}
-      <Navigation view={view} setView={setView} />
+      <Navigation
+        view={view}
+        setView={setView}
+        onOpenProvenance={() => setIsProvenanceOpen(true)}
+      />
 
       {/* Breadcrumbs */}
       <div className="breadcrumb">
@@ -208,6 +218,14 @@ export const App: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* Model vs Baseline Comparative Toggle (§17, §20, File 090) */}
+              <BaselineToggle
+                currentVeyraProbability={activeTimelinePoint?.response?.bust_probability ?? 0.58}
+                currentSpreadValue={activeTimelinePoint?.response?.uncertainty_pct ?? 4.8}
+                variable={variable}
+                leadHours={selectedLeadHours || 48}
+              />
             </div>
 
             {/* Right Column: Telemetry & Conformal Verification */}
@@ -222,10 +240,22 @@ export const App: React.FC = () => {
           </div>
         )}
 
+        {view === 'replay' && <ReplayView />}
+        {view === 'analogs' && (
+          <AnalogExplorer variable={variable} leadHours={selectedLeadHours || 48} />
+        )}
+        {view === 'metrics' && <ResearchMetrics />}
         {view === 'batch' && <BatchPanel />}
         {view === 'models' && <ModelCatalog />}
         {view === 'docs' && <ApiDocsView />}
       </main>
+
+      {/* Slide-out Data Provenance & Lineage Drawer (§17, §22) */}
+      <ProvenanceDrawer
+        isOpen={isProvenanceOpen}
+        onClose={() => setIsProvenanceOpen(false)}
+      />
+
 
       {/* Footer */}
       <footer>

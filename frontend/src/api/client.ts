@@ -403,6 +403,138 @@ export class VeyraApiClient {
       };
     }
   }
+
+  /**
+   * Fetch comprehensive multi-dimensional evaluation report per §18.1.
+   */
+  async getComprehensiveEvaluation(
+    model: string = 'v3'
+  ): Promise<{ data?: any; error?: ApiError }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/v1/model/evaluation/comprehensive?model=${encodeURIComponent(model)}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+
+      if (!response.ok) {
+        const error = await this.parseErrorResponse(response);
+        return { error };
+      }
+
+      const data = await response.json();
+      return { data };
+    } catch (err: unknown) {
+      return {
+        error: {
+          error: 'EVALUATION_FETCH_FAILED',
+          message: 'Unable to fetch comprehensive model evaluation report.',
+          status_code: 0,
+        },
+      };
+    }
+  }
+
+  /**
+   * Fetch historical analogs for an atmospheric state.
+   */
+  async getHistoricalAnalogs(params?: {
+    variable?: string;
+    lead_hours?: number;
+    limit?: number;
+    similarity_threshold?: number;
+  }): Promise<{ data?: any; error?: ApiError }> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.variable) queryParams.set('variable', params.variable);
+      if (params?.lead_hours != null) queryParams.set('lead_hours', String(params.lead_hours));
+      if (params?.limit != null) queryParams.set('limit', String(params.limit));
+      if (params?.similarity_threshold != null) queryParams.set('similarity_threshold', String(params.similarity_threshold));
+
+      const response = await fetch(`${this.baseUrl}/v1/analogs?${queryParams.toString()}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+
+      if (!response.ok) {
+        const error = await this.parseErrorResponse(response);
+        return { error };
+      }
+
+      const data = await response.json();
+      return { data };
+    } catch (err: unknown) {
+      return {
+        error: {
+          error: 'ANALOGS_FETCH_FAILED',
+          message: 'Unable to fetch historical analogs.',
+          status_code: 0,
+        },
+      };
+    }
+  }
+
+  /**
+   * Fetch regional spatial risk map.
+   */
+  async getRiskMap(params?: {
+    variable?: string;
+    lead_hours?: number;
+  }): Promise<{ data?: any; error?: ApiError }> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.variable) queryParams.set('variable', params.variable);
+      if (params?.lead_hours != null) queryParams.set('lead_hours', String(params.lead_hours));
+
+      const response = await fetch(`${this.baseUrl}/v1/risk-map?${queryParams.toString()}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+
+      if (!response.ok) {
+        const error = await this.parseErrorResponse(response);
+        return { error };
+      }
+
+      const data = await response.json();
+      return { data };
+    } catch (err: unknown) {
+      return {
+        error: {
+          error: 'RISK_MAP_FETCH_FAILED',
+          message: 'Unable to fetch spatial risk map.',
+          status_code: 0,
+        },
+      };
+    }
+  }
+
+  /**
+   * Fetch data provenance, licenses, and SHA-256 checksums.
+   */
+  async getDataProvenance(): Promise<{ data?: any; error?: ApiError }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/v1/data-provenance`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+
+      if (!response.ok) {
+        const error = await this.parseErrorResponse(response);
+        return { error };
+      }
+
+      const data = await response.json();
+      return { data };
+    } catch (err: unknown) {
+      return {
+        error: {
+          error: 'PROVENANCE_FETCH_FAILED',
+          message: 'Unable to fetch data provenance metadata.',
+          status_code: 0,
+        },
+      };
+    }
+  }
 }
 
 export const apiClient = new VeyraApiClient();

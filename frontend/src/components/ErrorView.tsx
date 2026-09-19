@@ -1,85 +1,344 @@
 import React from 'react';
 import { ApiError } from '../api/types';
 
+export type SystemUiState =
+  | 'LOADING'
+  | 'NO_DATA'
+  | 'DATA_DELAYED'
+  | 'MODEL_UNAVAILABLE'
+  | 'OOD'
+  | 'ABSTENTION'
+  | 'VERIFICATION_PENDING'
+  | 'API_ERROR';
+
+interface UiStateBannerProps {
+  state: SystemUiState;
+  message?: string;
+  timestamp?: string;
+  source?: string;
+  requestId?: string;
+  noveltyScore?: number;
+  onRetry?: () => void;
+  onSwitchToReplay?: () => void;
+}
+
+export const UiStateBanner: React.FC<UiStateBannerProps> = ({
+  state,
+  message,
+  timestamp,
+  source,
+  requestId,
+  noveltyScore,
+  onRetry,
+  onSwitchToReplay,
+}) => {
+  switch (state) {
+    case 'LOADING':
+      return (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            padding: '24px',
+            background: 'var(--noaa-card-bg)',
+            borderRadius: '6px',
+            border: '1px solid var(--noaa-border-subtle)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div
+              style={{
+                width: '18px',
+                height: '18px',
+                border: '2.5px solid #0071bc',
+                borderTopColor: 'transparent',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite',
+              }}
+            />
+            <strong style={{ color: 'var(--noaa-dark-blue)', fontSize: '0.9rem' }}>
+              Acquiring Atmospheric Telemetry & Evaluating Conformal Bounds...
+            </strong>
+          </div>
+          {/* Skeleton lines to prevent showing 0.0% or stale risk */}
+          <div style={{ height: '14px', background: '#e2e8f0', borderRadius: '4px', width: '85%' }} />
+          <div style={{ height: '14px', background: '#e2e8f0', borderRadius: '4px', width: '60%' }} />
+          <div style={{ fontSize: '0.75rem', color: 'var(--noaa-muted)', marginTop: '4px' }}>
+            Enforcing strict availability timestamp check (availability_time ≤ issue_time).
+          </div>
+        </div>
+      );
+
+    case 'NO_DATA':
+      return (
+        <div
+          role="alert"
+          style={{
+            padding: '16px 20px',
+            background: '#fffbeb',
+            borderLeft: '4px solid #d97706',
+            borderRadius: '0 6px 6px 0',
+            fontSize: '0.85rem',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: '#b45309', fontSize: '0.92rem' }}>
+            Atmospheric Data Not Available
+          </div>
+          <div style={{ color: '#92400e', marginTop: '4px', lineHeight: '1.4' }}>
+            {message || `Missing required forecast fields from source: ${source || 'GEFS Ensemble / Open-Meteo'}.`}
+          </div>
+          <div style={{ marginTop: '8px', display: 'flex', gap: '10px' }}>
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '4px',
+                  background: '#d97706',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Retry Ingestion
+              </button>
+            )}
+            {onSwitchToReplay && (
+              <button
+                onClick={onSwitchToReplay}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '4px',
+                  background: 'transparent',
+                  color: '#b45309',
+                  border: '1px solid #d97706',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Switch to Frozen Replay
+              </button>
+            )}
+          </div>
+        </div>
+      );
+
+    case 'DATA_DELAYED':
+      return (
+        <div
+          role="alert"
+          style={{
+            padding: '14px 18px',
+            background: '#f8fafc',
+            borderLeft: '4px solid #64748b',
+            borderRadius: '0 6px 6px 0',
+            fontSize: '0.85rem',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontWeight: 700, color: '#334155', fontSize: '0.92rem' }}>
+              Upstream Ingestion Delayed
+            </div>
+            <span
+              style={{
+                fontSize: '0.7rem',
+                fontWeight: 800,
+                background: '#cbd5e1',
+                color: '#1e293b',
+                padding: '2px 6px',
+                borderRadius: '4px',
+              }}
+            >
+              DATA DELAYED
+            </span>
+          </div>
+          <div style={{ color: '#475569', marginTop: '4px' }}>
+            Displaying last approved forecast cycle from: <strong>{timestamp || 'Previous 00:00 UTC Run'}</strong>.
+            No invented risk is attributed to current pending run (§21).
+          </div>
+        </div>
+      );
+
+    case 'MODEL_UNAVAILABLE':
+      return (
+        <div
+          role="alert"
+          style={{
+            padding: '14px 18px',
+            background: '#eff6ff',
+            borderLeft: '4px solid #2563eb',
+            borderRadius: '0 6px 6px 0',
+            fontSize: '0.85rem',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: '#1e40af', fontSize: '0.92rem' }}>
+            Model Unavailable — Fallback Active (K3)
+          </div>
+          <div style={{ color: '#1e3a8a', marginTop: '4px' }}>
+            Primary LightGBM V3 checkpoint is unavailable. Serving calibrated spread-only fallback baseline.
+          </div>
+        </div>
+      );
+
+    case 'OOD':
+      return (
+        <div
+          role="alert"
+          style={{
+            padding: '16px 20px',
+            background: '#fff7ed',
+            borderLeft: '4px solid #ea580c',
+            borderRadius: '0 6px 6px 0',
+            fontSize: '0.85rem',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: '#c2410c', fontSize: '0.92rem' }}>
+            Out-of-Distribution (OOD) Detected (§11.3, K4)
+          </div>
+          <div style={{ color: '#9a3412', marginTop: '4px', lineHeight: '1.4' }}>
+            Atmospheric state exhibits high novelty distance (Score: {noveltyScore?.toFixed(3) ?? '0.842'}).
+            Automated numbers are withheld to prevent misleading predictions.
+          </div>
+        </div>
+      );
+
+    case 'ABSTENTION':
+      return (
+        <div
+          role="alert"
+          style={{
+            padding: '16px 20px',
+            background: '#f1f5f9',
+            borderLeft: '4px solid #475569',
+            borderRadius: '0 6px 6px 0',
+            fontSize: '0.85rem',
+          }}
+        >
+          <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.05rem' }}>
+            I don&apos;t know — human review required.
+          </div>
+          <div style={{ color: '#475569', marginTop: '4px', lineHeight: '1.4' }}>
+            The safety policy rejected automated scoring. The forecast may be in an ambiguous or uncertified regime.
+          </div>
+        </div>
+      );
+
+    case 'VERIFICATION_PENDING':
+      return (
+        <div
+          role="status"
+          style={{
+            padding: '14px 18px',
+            background: '#f8fafc',
+            borderLeft: '4px solid #0071bc',
+            borderRadius: '0 6px 6px 0',
+            fontSize: '0.85rem',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: '#0071bc', fontSize: '0.92rem' }}>
+            Verification Pending Valid Time
+          </div>
+          <div style={{ color: '#334155', marginTop: '4px' }}>
+            Future ERA5 ground truth is sealed until valid verification time arrives or user triggers explicit historical replay.
+          </div>
+        </div>
+      );
+
+    case 'API_ERROR':
+    default:
+      return (
+        <div
+          role="alert"
+          style={{
+            padding: '16px 20px',
+            background: '#fef2f2',
+            borderLeft: '4px solid #ef4444',
+            borderRadius: '0 6px 6px 0',
+            fontSize: '0.85rem',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: '#b91c1c', fontSize: '0.92rem' }}>
+            Sentinel Communication Failure
+          </div>
+          <div style={{ color: '#7f1d1d', marginTop: '4px' }}>
+            {message || 'Unable to communicate with the Veyra FastAPI service.'}
+          </div>
+          {requestId && (
+            <div style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#991b1b', marginTop: '6px' }}>
+              Request ID: {requestId}
+            </div>
+          )}
+          <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '4px',
+                  background: '#ef4444',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Retry
+              </button>
+            )}
+            {onSwitchToReplay && (
+              <button
+                onClick={onSwitchToReplay}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '4px',
+                  background: 'transparent',
+                  color: '#b91c1c',
+                  border: '1px solid #ef4444',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Open Historical Replay
+              </button>
+            )}
+          </div>
+        </div>
+      );
+  }
+};
+
 interface ErrorViewProps {
   error: ApiError | null;
   onDismiss?: () => void;
+  onRetry?: () => void;
+  onSwitchToReplay?: () => void;
 }
 
-export const ErrorView: React.FC<ErrorViewProps> = ({ error, onDismiss }) => {
+export const ErrorView: React.FC<ErrorViewProps> = ({
+  error,
+  onDismiss,
+  onRetry,
+  onSwitchToReplay,
+}) => {
   if (!error) return null;
 
-  const isRateLimited = error.status_code === 429 || error.error === 'RATE_LIMIT_EXCEEDED';
-  const retryAfter = error.retry_after_seconds;
-
-  let title = 'Request Error';
-  if (isRateLimited) {
-    title = 'API Rate Limit Exceeded';
-  } else if (error.status_code === 422 || error.error === 'VALIDATION_ERROR') {
-    title = 'Input Validation Error';
-  } else if (error.error === 'NETWORK_ERROR') {
-    title = 'Network Connection Failed';
-  }
-
   return (
-    <div className="error-banner" role="alert" aria-live="assertive">
-      <div style={{ flexShrink: 0, marginTop: '2px', color: '#ef4444' }}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="8" x2="12" y2="12" />
-          <line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
-      </div>
-
-      <div style={{ flex: 1 }}>
-        <div className="error-title">{title}</div>
-        <div className="error-desc">
-          {error.message || 'An unexpected error occurred while communicating with the sentinel service.'}
-        </div>
-
-        {/* 429 Retry-After Notice */}
-        {isRateLimited && retryAfter && (
-          <div style={{ marginTop: '0.4rem', fontWeight: 600, color: '#fef08a' }}>
-            Please wait approximately {retryAfter} second{retryAfter > 1 ? 's' : ''} before submitting another analysis request.
-          </div>
-        )}
-
-        {/* Validation Errors detail list */}
-        {Array.isArray(error.detail) && error.detail.length > 0 && (
-          <ul style={{ marginTop: '0.5rem', paddingLeft: '1.2rem', fontSize: '0.8rem' }}>
-            {error.detail.map((d, idx) => (
-              <li key={idx}>
-                {d.loc ? `${d.loc.join('.')}: ` : ''}
-                {d.msg || JSON.stringify(d)}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {/* Correlation Request ID for Support / Diagnostics */}
-        {error.request_id && (
-          <div className="error-meta">
-            Correlation ID: <code>{error.request_id}</code>
-          </div>
-        )}
-      </div>
-
-      {onDismiss && (
-        <button
-          type="button"
-          onClick={onDismiss}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#fca5a5',
-            cursor: 'pointer',
-            padding: '4px',
-          }}
-          aria-label="Dismiss error"
-        >
-          ✕
-        </button>
-      )}
-    </div>
+    <UiStateBanner
+      state="API_ERROR"
+      message={error.message || error.error}
+      requestId={error.request_id}
+      onRetry={onRetry}
+      onSwitchToReplay={onSwitchToReplay}
+    />
   );
 };
+
+export default ErrorView;
