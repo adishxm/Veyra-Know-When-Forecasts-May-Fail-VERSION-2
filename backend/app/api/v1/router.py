@@ -1,12 +1,20 @@
 """V1 API Router combining all v1 endpoints."""
 from fastapi import APIRouter
 from backend.app.api.v1.endpoints import (
+    analogs,
     dashboard,
     evaluation,
+    export,
+    forecasts,
     health,
+    metadata,
     metrics,
+    models,
     multi_location,
     predict,
+    provenance,
+    risk_map,
+    explanation,
 )
 
 api_router = APIRouter()
@@ -40,4 +48,45 @@ api_router.include_router(
     dashboard.router,
     prefix="/dashboard",
     tags=["Dashboard Intelligence"],
+)
+
+# Phase 5 Endpoints (§15, §15.2)
+api_router.include_router(
+    models.router,
+    tags=["Model Registry"],
+)
+
+api_router.include_router(
+    forecasts.router,
+    tags=["Forecast Cycles & Replay"],
+)
+
+api_router.include_router(
+    risk_map.router,
+    tags=["Risk Mapping"],
+)
+
+api_router.include_router(
+    analogs.router,
+    tags=["Historical Analogs"],
+)
+
+api_router.include_router(
+    explanation.router,
+    tags=["Physical Attribution"],
+)
+
+api_router.include_router(
+    metadata.router,
+    tags=["System Metadata"],
+)
+
+api_router.include_router(
+    provenance.router,
+    tags=["Data Provenance"],
+)
+
+api_router.include_router(
+    export.router,
+    tags=["Data Export"],
 )
