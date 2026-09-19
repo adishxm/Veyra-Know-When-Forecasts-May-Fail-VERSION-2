@@ -129,10 +129,19 @@ implementation_plan_19-09-2026_17_40
 
 
 
-# Subproject exclusions
-Frontend-Original/node_modules/
-Frontend-Original/dist/
-Builder-2/.pytest_cache/
-Parinidhi/.pytest_cache/
+# ── Legacy / archived directories (removed from repo, kept locally) ──
+Builder-2/
+Frontend-Original/
+Parinidhi/
+Overview/
+Audits/
+.docstest-round_1/
+
+# ── Duplicate root-level dev docs (originals live in docs/) ──
+/DAY_*.md
+/BUILDER_*.md
+/DEVELOPER_COMMANDS.md
+
+# ── Misc ──
 *.env.local
 *.env.*.local
