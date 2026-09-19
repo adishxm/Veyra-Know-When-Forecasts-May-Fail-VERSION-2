@@ -27,6 +27,23 @@ function RecenterMap({ lat, lng }: { lat: number; lng: number }) {
   return null;
 }
 
+// Helper component to invalidate size on mount and window resize
+function MapResizer() {
+  const map = useMap();
+  useEffect(() => {
+    const handleResize = () => {
+      map.invalidateSize();
+    };
+    const timer = setTimeout(handleResize, 150);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [map]);
+  return null;
+}
+
 // Canonical Indian Meteorological Risk Zones (GeoJSON / Polygon coordinates)
 const DEFAULT_REGIONAL_POLYGONS: Array<{
   id: string;
@@ -227,12 +244,12 @@ export const ForecastMap: React.FC<ForecastMapProps> = ({
       </div>
 
       {/* Map Container */}
-      <div style={{ flex: 1, minHeight: '360px', position: 'relative' }}>
+      <div style={{ width: '100%', height: '380px', minHeight: '380px', position: 'relative' }}>
         <MapContainer
           center={position}
           zoom={5}
           scrollWheelZoom={false}
-          style={{ height: '100%', width: '100%' }}
+          style={{ height: '380px', minHeight: '380px', width: '100%' }}
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -341,6 +358,7 @@ export const ForecastMap: React.FC<ForecastMapProps> = ({
             })}
 
           <RecenterMap lat={validLat} lng={validLon} />
+          <MapResizer />
         </MapContainer>
       </div>
     </div>

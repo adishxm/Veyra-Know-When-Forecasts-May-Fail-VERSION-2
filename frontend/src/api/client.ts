@@ -18,10 +18,12 @@ import {
   V3ModelEvaluationResponse,
 } from './types';
 
-// Resolve base API URL from environment variable or fallback to empty string (same-origin relative URL)
+// Resolve base API URL from environment variable or fallback to http://127.0.0.1:8000 in dev
 const DEFAULT_BASE_URL =
   import.meta.env?.VITE_API_BASE_URL !== undefined && import.meta.env.VITE_API_BASE_URL !== ''
     ? import.meta.env.VITE_API_BASE_URL
+    : import.meta.env.DEV
+    ? 'http://127.0.0.1:8000'
     : '';
 
 
