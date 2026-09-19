@@ -321,7 +321,7 @@ class EventGroupedDataSplitter:
             raise TemporalLeakageError(
                 f"Temporal leakage detected: max(train.issue_time) ({train_max}) > min(val.issue_time) ({val_min})"
             )
-        if val_max > test_min:
+        if not self.holdout_event_ids and val_max > test_min:
             raise TemporalLeakageError(
                 f"Temporal leakage detected: max(val.issue_time) ({val_max}) > min(test.issue_time) ({test_min})"
             )
@@ -336,3 +336,265 @@ class EventGroupedDataSplitter:
             held_out_events=sorted(list(self.holdout_event_ids)),
             purged_rows_count=purged_count,
         )
+
+
+class RegionHoldoutSplitter:
+    """Partitions dataset with explicit geographic region holdouts (§10.4).
+
+    Enforces zero spatial overlap:
+    regions(train) ∩ regions(held_out_test) = ∅.
+    Non-held-out regions are chronologically split into train and validation.
+    """
+
+    def __init__(
+        self,
+        held_out_regions: List[str],
+        train_ratio: float = 0.80,
+        val_ratio: float = 0.20,
+        embargo_days: int = 0,
+    ):
+        if not held_out_regions:
+            raise ValueError("held_out_regions must contain at least one region")
+        self.held_out_regions = set(r.strip().lower() for r in held_out_regions)
+        self.train_ratio = train_ratio
+        self.val_ratio = val_ratio
+        self.embargo_days = embargo_days
+
+    @staticmethod
+    def _parse_iso(iso_str: str) -> datetime:
+        return datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+
+    def split(self, rows: List[HistoricalTrainingRow]) -> DatasetSplits:
+        """Split dataset into Train (regional baseline), Val (regional baseline), and Test (held-out regions)."""
+        if not rows:
+            raise ValueError("Cannot split empty rows list")
+
+        test_rows: List[HistoricalTrainingRow] = []
+        train_val_rows: List[HistoricalTrainingRow] = []
+
+        for r in rows:
+            loc = r.location.strip().lower()
+            if loc in self.held_out_regions:
+                test_rows.append(r)
+            else:
+                train_val_rows.append(r)
+
+        if not test_rows:
+            raise ValueError(
+                f"None of the provided rows match held_out_regions: {self.held_out_regions}"
+            )
+        if len(train_val_rows) < 2:
+            raise ValueError(
+                f"Need at least 2 non-held-out rows to form train and validation, got {len(train_val_rows)}"
+            )
+
+        # Chronologically sort train_val rows
+        sorted_tv = sorted(
+            train_val_rows,
+            key=lambda r: (self._parse_iso(r.issue_time), self._parse_iso(r.valid_time)),
+        )
+
+        n_tv = len(sorted_tv)
+        n_train = max(1, int(n_tv * (self.train_ratio / (self.train_ratio + self.val_ratio))))
+        train = sorted_tv[:n_train]
+        val = sorted_tv[n_train:]
+        if not val:
+            val = [train.pop()]
+
+        # Apply embargo if configured
+        purged = 0
+        if self.embargo_days > 0 and len(train) > 0 and len(val) > 0:
+            embargo_delta = timedelta(days=self.embargo_days)
+            train_max_t = max(self._parse_iso(r.issue_time) for r in train)
+            init_val = len(val)
+            val = [r for r in val if (self._parse_iso(r.issue_time) - train_max_t) >= embargo_delta]
+            purged = init_val - len(val)
+
+        # Verify spatial isolation invariant
+        train_locs = {r.location.strip().lower() for r in train}
+        val_locs = {r.location.strip().lower() for r in val}
+        test_locs = {r.location.strip().lower() for r in test_rows}
+
+        if train_locs.intersection(test_locs) or val_locs.intersection(test_locs):
+            raise ValueError(
+                f"Spatial leakage detected! Held-out regions appeared in train/val: "
+                f"train_overlap={train_locs.intersection(test_locs)}, val_overlap={val_locs.intersection(test_locs)}"
+            )
+
+        return DatasetSplits(
+            train_rows=train,
+            val_rows=val,
+            test_rows=test_rows,
+            train_time_range=(min(r.issue_time for r in train), max(r.issue_time for r in train)),
+            val_time_range=(min(r.issue_time for r in val), max(r.issue_time for r in val)),
+            test_time_range=(min(r.issue_time for r in test_rows), max(r.issue_time for r in test_rows)),
+            held_out_events=sorted(list(self.held_out_regions)),
+            purged_rows_count=purged,
+        )
+
+
+class ModelVersionHoldoutSplitter:
+    """Partitions dataset with explicit NWP model version holdouts (§10.4).
+
+    Enforces zero model-version overlap between train/val and held-out test partitions.
+    Evaluates robustness to operational model upgrades (e.g., GFS v15 -> v16).
+    """
+
+    def __init__(
+        self,
+        held_out_model_versions: List[str],
+        train_ratio: float = 0.80,
+        val_ratio: float = 0.20,
+    ):
+        if not held_out_model_versions:
+            raise ValueError("held_out_model_versions must contain at least one version")
+        self.held_out_versions = set(v.strip().lower() for v in held_out_model_versions)
+        self.train_ratio = train_ratio
+        self.val_ratio = val_ratio
+
+    @staticmethod
+    def _parse_iso(iso_str: str) -> datetime:
+        return datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+
+    def split(self, rows: List[HistoricalTrainingRow]) -> DatasetSplits:
+        """Split dataset into Train/Val (baseline versions) and Test (held-out model versions)."""
+        if not rows:
+            raise ValueError("Cannot split empty rows list")
+
+        test_rows: List[HistoricalTrainingRow] = []
+        train_val_rows: List[HistoricalTrainingRow] = []
+
+        for r in rows:
+            ver = getattr(r, "model_version", None) or "unknown"
+            if str(ver).strip().lower() in self.held_out_versions:
+                test_rows.append(r)
+            else:
+                train_val_rows.append(r)
+
+        if not test_rows:
+            raise ValueError(
+                f"None of the provided rows match held_out_model_versions: {self.held_out_versions}"
+            )
+        if len(train_val_rows) < 2:
+            raise ValueError(
+                f"Need at least 2 non-held-out rows to form train and validation, got {len(train_val_rows)}"
+            )
+
+        sorted_tv = sorted(
+            train_val_rows,
+            key=lambda r: (self._parse_iso(r.issue_time), self._parse_iso(r.valid_time)),
+        )
+
+        n_tv = len(sorted_tv)
+        n_train = max(1, int(n_tv * (self.train_ratio / (self.train_ratio + self.val_ratio))))
+        train = sorted_tv[:n_train]
+        val = sorted_tv[n_train:]
+        if not val:
+            val = [train.pop()]
+
+        return DatasetSplits(
+            train_rows=train,
+            val_rows=val,
+            test_rows=test_rows,
+            train_time_range=(min(r.issue_time for r in train), max(r.issue_time for r in train)),
+            val_time_range=(min(r.issue_time for r in val), max(r.issue_time for r in val)),
+            test_time_range=(min(r.issue_time for r in test_rows), max(r.issue_time for r in test_rows)),
+            held_out_events=sorted(list(self.held_out_versions)),
+            purged_rows_count=0,
+        )
+
+
+class MultiDimensionalHoldoutSplitter:
+    """Unified multi-dimensional data splitter combining temporal, event, region, and model holdouts."""
+
+    def __init__(
+        self,
+        held_out_events: Optional[List[str]] = None,
+        held_out_regions: Optional[List[str]] = None,
+        held_out_model_versions: Optional[List[str]] = None,
+        train_ratio: float = 0.70,
+        val_ratio: float = 0.15,
+        test_ratio: float = 0.15,
+        embargo_days: int = 0,
+    ):
+        self.held_out_events = set(e.strip().lower() for e in (held_out_events or []))
+        self.held_out_regions = set(r.strip().lower() for r in (held_out_regions or []))
+        self.held_out_versions = set(v.strip().lower() for v in (held_out_model_versions or []))
+        self.train_ratio = train_ratio
+        self.val_ratio = val_ratio
+        self.test_ratio = test_ratio
+        self.embargo_days = embargo_days
+
+    @staticmethod
+    def _parse_iso(iso_str: str) -> datetime:
+        return datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+
+    def split(self, rows: List[HistoricalTrainingRow]) -> DatasetSplits:
+        """Execute multi-dimensional holdout splitting with strict leakage prevention."""
+        test_rows: List[HistoricalTrainingRow] = []
+        candidate_rows: List[HistoricalTrainingRow] = []
+
+        for r in rows:
+            loc = r.location.strip().lower()
+            ver = getattr(r, "model_version", None) or "unknown"
+            ev_id = getattr(r, "event_id", None) or ""
+
+            # Check if matching any holdout criteria
+            is_holdout = (
+                (loc in self.held_out_regions)
+                or (str(ver).strip().lower() in self.held_out_versions)
+                or (str(ev_id).strip().lower() in self.held_out_events)
+            )
+
+            if is_holdout:
+                test_rows.append(r)
+            else:
+                candidate_rows.append(r)
+
+        if not candidate_rows:
+            raise ValueError("All rows matched holdout criteria; no data left for training")
+
+        # Partition candidate rows chronologically
+        sorted_cand = sorted(
+            candidate_rows,
+            key=lambda r: (self._parse_iso(r.issue_time), self._parse_iso(r.valid_time)),
+        )
+
+        n = len(sorted_cand)
+        n_train = max(1, int(n * (self.train_ratio / (self.train_ratio + self.val_ratio + (self.test_ratio if not test_rows else 0.0)))))
+        train = sorted_cand[:n_train]
+        rem = sorted_cand[n_train:]
+
+        if test_rows:
+            val = rem
+            if not val:
+                val = [train.pop()]
+        else:
+            n_val = max(1, len(rem) // 2)
+            val = rem[:n_val]
+            test_rows = rem[n_val:]
+            if not test_rows:
+                test_rows = [val.pop()] if len(val) > 1 else [train.pop()]
+
+        # Apply embargo
+        purged = 0
+        if self.embargo_days > 0 and len(train) > 0 and len(val) > 0:
+            embargo_delta = timedelta(days=self.embargo_days)
+            train_max_t = max(self._parse_iso(r.issue_time) for r in train)
+            init_val = len(val)
+            val = [r for r in val if (self._parse_iso(r.issue_time) - train_max_t) >= embargo_delta]
+            purged = init_val - len(val)
+
+        all_holdouts = sorted(list(self.held_out_events | self.held_out_regions | self.held_out_versions))
+
+        return DatasetSplits(
+            train_rows=train,
+            val_rows=val,
+            test_rows=test_rows,
+            train_time_range=(min(r.issue_time for r in train), max(r.issue_time for r in train)),
+            val_time_range=(min(r.issue_time for r in val), max(r.issue_time for r in val)),
+            test_time_range=(min(r.issue_time for r in test_rows), max(r.issue_time for r in test_rows)),
+            held_out_events=all_holdouts,
+            purged_rows_count=purged,
+        )
+

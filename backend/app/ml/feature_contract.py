@@ -22,6 +22,9 @@ class DataLeakageError(FeatureContractError):
     """Raised when ground-truth fields or future data leak into feature extraction."""
 
 
+FeatureLeakageError = DataLeakageError
+
+
 # Prohibited ground-truth, reference observation, and future evaluation fields (§9, §10.4)
 FORBIDDEN_GROUND_TRUTH_FIELDS: Set[str] = {
     "reference_value",
@@ -38,6 +41,10 @@ FORBIDDEN_GROUND_TRUTH_FIELDS: Set[str] = {
     "observed_max",
     "observed_min",
     "ground_truth",
+    "era5_actual",
+    "actual_observation",
+    "actual_value",
+    "ground_truth_value",
 }
 
 # Standardized temporal tolerance (seconds) for minor network/clock skew
@@ -146,6 +153,10 @@ def validate_feature_vector(
             validated[k] = 0.0
             continue
 
+        if k in ("availability_time", "issue_time", "valid_time", "location", "variable", "model_version", "region"):
+            validated[k] = str(v)
+            continue
+
         try:
             val = float(v)
         except (ValueError, TypeError) as exc:
@@ -167,3 +178,26 @@ def validate_feature_vector(
             raise FeatureContractError(f"Feature schema mismatch. Unexpected extra features: {sorted(list(extra))}")
 
     return validated
+
+
+class FeatureContract:
+    """Class wrapper for feature contract validation and leakage prevention (§9)."""
+
+    def __init__(self, forbidden_fields: Optional[Set[str]] = None):
+        self.forbidden_fields = forbidden_fields or FORBIDDEN_GROUND_TRUTH_FIELDS
+
+    def validate_features(
+        self,
+        features: Dict[str, Any],
+        issue_time: Union[str, datetime],
+        availability_time: Optional[Union[str, datetime]] = None,
+        expected_names: Optional[List[str]] = None,
+    ) -> Dict[str, float]:
+        """Validate temporal causality and numeric contract on features."""
+        validate_issue_time_safety(issue_time, availability_time)
+        return validate_feature_vector(features, expected_names=expected_names, allow_missing=True)
+
+    def filter_forbidden_fields(self, data_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Return shallow copy with all forbidden ground truth fields stripped."""
+        return {k: v for k, v in data_dict.items() if k not in self.forbidden_fields}
+
