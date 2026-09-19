@@ -161,11 +161,16 @@ export const Navigation: React.FC<NavigationProps> = ({ view, setView, onOpenPro
           <div className="dropdown">
             <button
               type="button"
-              onClick={onOpenProvenance}
+              onClick={() => {
+                onOpenProvenance();
+                setMobileMenuOpen(false);
+              }}
+              title="View Data Lineage, SHA-256 Checksums & Anti-Leakage Invariants"
               style={{
-                background: 'rgba(255, 255, 255, 0.1)',
-                border: '1px solid rgba(255, 255, 255, 0.3)',
+                background: 'rgba(255, 255, 255, 0.15)',
+                border: '1px solid rgba(255, 255, 255, 0.35)',
                 color: 'var(--noaa-white)',
+                cursor: 'pointer',
               }}
             >
               Lineage &amp; Provenance
