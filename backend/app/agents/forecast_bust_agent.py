@@ -12,6 +12,7 @@ from typing import Optional
 from backend.app.core.metrics import default_metrics
 from backend.app.safety.abstention import SafetyAssessment, SafetyEvaluator
 from backend.app.schemas.prediction import (
+    MAX_SUPPORTED_LEAD_HOURS,
     PredictionRequest,
     PredictionResponse,
     ReasonCode,
@@ -72,7 +73,9 @@ class ForecastBustAgent:
         """Fetch weather and atmospheric forecast data from injected weather service."""
         try:
             try:
-                return self.weather_service.get_forecast(location, target_date, forecast_days=forecast_days)
+                if forecast_days is not None:
+                    return self.weather_service.get_forecast(location, target_date, forecast_days=forecast_days)
+                return self.weather_service.get_forecast(location, target_date)
             except TypeError:
                 return self.weather_service.get_forecast(location, target_date)
         except Exception as exc:
@@ -248,16 +251,21 @@ class ForecastBustAgent:
 
         # 9. Explicit Horizon Context
         evaluated_lead: Optional[int] = None
-        if feature_result and feature_result.features and "lead_hours" in feature_result.features:
-            try:
-                evaluated_lead = int(round(float(feature_result.features["lead_hours"])))
-            except (ValueError, TypeError):
-                evaluated_lead = None
-        elif weather_result and weather_result.metadata and "lead_hours" in weather_result.metadata:
+        if weather_result and weather_result.metadata and "lead_hours" in weather_result.metadata:
             try:
                 evaluated_lead = int(round(float(weather_result.metadata["lead_hours"])))
             except (ValueError, TypeError):
                 evaluated_lead = None
+        elif feature_result and feature_result.features and "lead_hours" in feature_result.features:
+            try:
+                raw_lh = float(feature_result.features["lead_hours"])
+                if raw_lh >= 1.0:
+                    evaluated_lead = int(round(raw_lh))
+            except (ValueError, TypeError):
+                evaluated_lead = None
+
+        if evaluated_lead is not None and (evaluated_lead < 1 or evaluated_lead > MAX_SUPPORTED_LEAD_HOURS):
+            evaluated_lead = None
 
         evaluated_valid: Optional[str] = (
             weather_result.metadata.get("valid_time") if weather_result and weather_result.metadata else None
@@ -265,6 +273,43 @@ class ForecastBustAgent:
         evaluated_issue: Optional[str] = (
             weather_result.metadata.get("issue_time") if weather_result and weather_result.metadata else None
         )
+
+        # 10. Phase 1 Bust Labeling & Severity Intelligence (§8.1, §8.2)
+        label_version = "v2.0-q95-mad"
+        ambiguity_flag = None
+        severity = None
+        normalized_error = model_meta.get("normalized_error") or feat_meta.get("normalized_error")
+        spatial_fss = model_meta.get("spatial_fss") or feat_meta.get("spatial_fss")
+        sensitivity_labels = model_meta.get("sensitivity_labels")
+
+        if not safety_assessment.abstain and safety_assessment.bust_probability is not None:
+            prob = safety_assessment.bust_probability
+            # Ambiguity flag: true if near threshold (e.g. within gray band or uncert_pct >= 70%)
+            raw_ambig = model_meta.get("ambiguity_flag") or model_meta.get("is_ambiguous_zone")
+            if raw_ambig is not None:
+                ambiguity_flag = bool(raw_ambig)
+            elif uncert_pct is not None:
+                ambiguity_flag = bool(uncert_pct >= 70.0)  # Near decision boundary
+
+            # Severity classification (§8.2: low, moderate, severe)
+            raw_sev = model_meta.get("severity")
+            if raw_sev is not None:
+                severity = str(raw_sev)
+            elif prob < 0.35:
+                severity = "low"
+            elif prob < 0.65:
+                severity = "moderate"
+            else:
+                severity = "severe"
+
+            if sensitivity_labels is None:
+                # Default monotonic sensitivity indicators relative to risk tiers
+                sensitivity_labels = {
+                    "q90": 1 if prob >= 0.20 else 0,
+                    "q95": 1 if prob >= 0.50 else 0,
+                    "q975": 1 if prob >= 0.75 else 0,
+                    "q99": 1 if prob >= 0.90 else 0,
+                }
 
         return PredictionResponse(
             location=location,
@@ -277,6 +322,12 @@ class ForecastBustAgent:
             data_version=weather_result.data_version if weather_result else None,
             explanation=explanation,
             calibration_status=cal_status,
+            label_version=label_version,
+            ambiguity_flag=ambiguity_flag,
+            severity=severity,
+            normalized_error=normalized_error,
+            spatial_fss=spatial_fss,
+            sensitivity_labels=sensitivity_labels,
             confidence_index=conf_index,
             uncertainty_pct=uncert_pct,
             ood_score=ood_score,

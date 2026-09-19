@@ -226,3 +226,5 @@ Builder 2 can easily extend or replace any pipeline stage by implementing the ty
 - **`BaseSafetyService`**: Enhance out-of-distribution (OOD) distance metrics and adaptive trust gates.
 
 Pass custom implementations into `ForecastBustAgent` via dependency injection without modifying the core application orchestrator.
+
+# Veyra-Know-When-Forecasts-May-Fail-VERSION-2

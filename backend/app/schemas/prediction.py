@@ -274,6 +274,30 @@ class PredictionResponse(BaseModel):
         default=None,
         description="Probability calibration status: CALIBRATED, FAILED, or UNAVAILABLE",
     )
+    label_version: Optional[str] = Field(
+        default="v2.0-q95-mad",
+        description="Version identifier of the bust label policy (e.g. v2.0-q95-mad)",
+    )
+    ambiguity_flag: Optional[bool] = Field(
+        default=None,
+        description="Flag indicating forecast error or probability is in the near-threshold ambiguity zone",
+    )
+    severity: Optional[str] = Field(
+        default=None,
+        description="Forecast bust severity classification: low, moderate, or severe",
+    )
+    normalized_error: Optional[float] = Field(
+        default=None,
+        description="Continuous normalized error relative to training MAD distribution",
+    )
+    spatial_fss: Optional[float] = Field(
+        default=None,
+        description="Fractions Skill Score for neighborhood spatial evaluation, if spatial field available",
+    )
+    sensitivity_labels: Optional[dict[str, int]] = Field(
+        default=None,
+        description="Multi-threshold bust sensitivity outcomes (e.g. {'q90': 1, 'q95': 1, 'q975': 0, 'q99': 0})",
+    )
     # Builder 2 Advanced Intelligence Fields
     confidence_index: Optional[float] = Field(
         default=None,

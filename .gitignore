@@ -93,6 +93,8 @@ data/training/*
 models/*
 !models/.gitkeep
 !models/*/
+!models/baseline_logistic_v1.joblib
+!models/baseline_logistic_v1_metadata.json
 !models/day4/*.joblib
 !models/day4/*.json
 !models/v2/*.joblib
@@ -108,6 +110,7 @@ models/*
 *.h5
 *.hdf5
 *.joblib
+!models/baseline_logistic_v1.joblib
 !models/day4/*.joblib
 !models/v2/*.joblib
 !models/v3/*.joblib
@@ -122,6 +125,7 @@ frontend/dist/
 
 # Local scratch and temporary test verification
 scratch/
+implementation_plan_19-09-2026_17_40
 
 
 

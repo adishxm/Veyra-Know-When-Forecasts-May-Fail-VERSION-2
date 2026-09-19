@@ -303,7 +303,8 @@ class OpenMeteoGEFSWeatherService(BaseWeatherService):
                     continue
                 vf = st["vals"][i]
                 if st["has_members"]:
-                    nm = int(st["member_count"][i])
+                    raw_nm = int(st["member_count"][i])
+                    nm = raw_nm if raw_nm >= 1 else None
                     em = float(st["means"][i]) if not np.isnan(st["means"][i]) else None
                     es = float(st["stds"][i]) if not np.isnan(st["stds"][i]) else None
                     emin = float(st["mins"][i]) if not np.isnan(st["mins"][i]) else None

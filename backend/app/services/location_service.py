@@ -379,6 +379,43 @@ KNOWN_BENCHMARK_LOCATIONS: Dict[str, Dict[str, Any]] = {
         "timezone": "Asia/Kolkata",
         "elevation_m": 16.0,
     },
+    # International benchmark reference cities
+    "london": {
+        "name": "London",
+        "latitude": 51.5074,
+        "longitude": -0.1278,
+        "country": "United Kingdom",
+        "state_region": "England",
+        "timezone": "Europe/London",
+        "elevation_m": 25.0,
+    },
+    "tokyo": {
+        "name": "Tokyo",
+        "latitude": 35.6762,
+        "longitude": 139.6503,
+        "country": "Japan",
+        "state_region": "Tokyo",
+        "timezone": "Asia/Tokyo",
+        "elevation_m": 40.0,
+    },
+    "paris": {
+        "name": "Paris",
+        "latitude": 48.8566,
+        "longitude": 2.3522,
+        "country": "France",
+        "state_region": "Île-de-France",
+        "timezone": "Europe/Paris",
+        "elevation_m": 35.0,
+    },
+    "new york": {
+        "name": "New York",
+        "latitude": 40.7128,
+        "longitude": -74.0060,
+        "country": "United States",
+        "state_region": "New York",
+        "timezone": "America/New_York",
+        "elevation_m": 10.0,
+    },
 }
 
 # Known unresolvable / fictional locations explicitly rejected for safety
