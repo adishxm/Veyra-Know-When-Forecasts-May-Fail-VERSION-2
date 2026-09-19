@@ -33,6 +33,7 @@ class SafetyAssessment:
     )
     ood_state: OODState = OODState.NORMAL
     ood_score: Optional[float] = None
+    is_gray_band: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -157,6 +158,8 @@ class SafetyEvaluator(BaseSafetyService):
                 else:
                     reason = ReasonCode.DATA_NOT_READY.value
 
+                meta = {"error": weather_result.error} if weather_result.error else {}
+                meta["color_band"] = "GRAY"
                 return SafetyAssessment(
                     bust_probability=None,
                     risk_level=None,
@@ -164,7 +167,24 @@ class SafetyEvaluator(BaseSafetyService):
                     abstain=True,
                     reason_codes=[reason],
                     ood_state=OODState.ABSTAIN,
-                    metadata={"error": weather_result.error} if weather_result.error else {},
+                    is_gray_band=True,
+                    metadata=meta,
+                )
+
+            # Near-threshold data quality ambiguity (§7.4, C10)
+            if weather_result.quality_flags and (
+                weather_result.quality_flags.get("near_threshold_qc")
+                or weather_result.quality_flags.get("marginal_data_quality")
+            ):
+                return SafetyAssessment(
+                    bust_probability=None,
+                    risk_level=None,
+                    trust_state=TrustState.UNAVAILABLE,
+                    abstain=True,
+                    reason_codes=["NEAR_THRESHOLD_DATA_QUALITY", ReasonCode.QC_FAILED.value],
+                    ood_state=OODState.ABSTAIN,
+                    is_gray_band=True,
+                    metadata={"error": "Near-threshold data quality ambiguity; assigned GRAY band", "color_band": "GRAY"},
                 )
 
         # 2. Feature Pipeline Stage Check
@@ -175,6 +195,8 @@ class SafetyEvaluator(BaseSafetyService):
                 else:
                     reason = ReasonCode.FEATURES_NOT_READY.value
 
+                meta = {"error": feature_result.error} if feature_result.error else {}
+                meta["color_band"] = "GRAY"
                 return SafetyAssessment(
                     bust_probability=None,
                     risk_level=None,
@@ -182,7 +204,8 @@ class SafetyEvaluator(BaseSafetyService):
                     abstain=True,
                     reason_codes=[reason],
                     ood_state=OODState.ABSTAIN,
-                    metadata={"error": feature_result.error} if feature_result.error else {},
+                    is_gray_band=True,
+                    metadata=meta,
                 )
 
         # 3. Model Inference Stage Check
@@ -192,6 +215,8 @@ class SafetyEvaluator(BaseSafetyService):
                 if (model_result and model_result.metadata)
                 else ReasonCode.MODEL_NOT_READY.value
             )
+            meta = {"error": model_result.error} if (model_result and model_result.error) else {}
+            meta["color_band"] = "GRAY"
             return SafetyAssessment(
                 bust_probability=None,
                 risk_level=None,
@@ -199,7 +224,8 @@ class SafetyEvaluator(BaseSafetyService):
                 abstain=True,
                 reason_codes=[reason],
                 ood_state=OODState.ABSTAIN,
-                metadata={"error": model_result.error} if (model_result and model_result.error) else {},
+                is_gray_band=True,
+                metadata=meta,
             )
 
         # 4. Valid Model Result Evaluation

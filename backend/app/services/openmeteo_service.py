@@ -1,6 +1,7 @@
 """Real Weather Ingestion Service using Open-Meteo GEFS / GFS public ensemble API."""
 import copy
 import gzip
+import hashlib
 import json
 import logging
 import time
@@ -488,6 +489,8 @@ class OpenMeteoGEFSWeatherService(BaseWeatherService):
             )
 
         # QC Succeeded
+        payload_sha256 = hashlib.sha256(json.dumps(raw_data, sort_keys=True).encode("utf-8")).hexdigest()
+
         dataset = CanonicalForecastDataset(
             location=location,
             latitude=latitude,
@@ -495,7 +498,7 @@ class OpenMeteoGEFSWeatherService(BaseWeatherService):
             issue_time=records[0].issue_time,
             source="NOAA_GEFS_OPENMETEO",
             records=records,
-            metadata={"record_count": len(records), "data_version": self.data_version},
+            metadata={"record_count": len(records), "data_version": self.data_version, "payload_sha256": payload_sha256},
         )
 
         return WeatherResult(
@@ -510,5 +513,10 @@ class OpenMeteoGEFSWeatherService(BaseWeatherService):
                 "record_count": len(records),
                 "issue_time": records[0].issue_time,
                 "lead_hours_range": [records[0].lead_hours, records[-1].lead_hours],
+                "payload_sha256": payload_sha256,
+                "dataset_license": "Open-Meteo (ODbL / CC-BY 4.0)",
+                "license_uri": "https://open-meteo.com/en/terms",
+                "provider": "NOAA_GEFS",
+                "dataset_role": "PREDICTOR_INPUT",
             },
         )
