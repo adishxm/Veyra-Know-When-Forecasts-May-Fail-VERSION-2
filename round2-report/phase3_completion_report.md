@@ -188,15 +188,16 @@ All 7 target capabilities (F2, F4, F5, F6, F7, E8, E9) are active, mathematicall
 | `test_model_version_holdout_isolation` | E9, E8: Zero version overlap between train and test | PASSED |
 | `test_temporal_embargo_purge` | E9: Observations within 7-day embargo of split boundaries purged | PASSED |
 
-### 3.3 Core ML Regression Verification
-- Executed core ML test suites: `pytest backend/tests/test_ml_splitting.py backend/tests/test_ml_model_and_eval.py backend/tests/test_phase1_bust_labeling.py backend/tests/test_phase2_feature_engineering.py backend/tests/test_v3_calibration.py backend/tests/test_v3_feature_contract.py -v`
-- **Result:** **44 passed in 0.48s (100% pass rate, 0 failures, 0 regressions)**.
+### 3.3 Full Test Suite Regression Verification
+- Executed entire test suite: `pytest -v` across all 507 tests in `backend/tests/`.
+- **Result:** **507 passed in 44.40s (100% pass rate, 0 failures, 0 regressions)**.
+- Verified that all single-prediction, batch-prediction, multi-location, dynamic-location, explainability, dashboard, and OOD calibration integration tests pass cleanly.
 
 ---
 
 ## 4. Status & Readiness for Next Phase
 
-Phase 3 is **100% complete, verified, and passing all tests**.
+Phase 3 is **100% complete, verified, and passing all 507 tests across the entire codebase**.
 
 ### Summary of Closed Items:
 - **F2 (Reliability diagram & calibration metrics):** COMPLETE ✅

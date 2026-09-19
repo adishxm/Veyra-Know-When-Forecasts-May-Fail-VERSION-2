@@ -135,8 +135,9 @@ class OODDetector:
         n_matched = 0
         extreme_drivers = []
 
-        is_normalized_pipeline = any(
-            k in features for k in ("forecast_value", "var_temperature_2m", "cos_hour")
+        is_normalized_pipeline = (
+            ("latitude" in features or "longitude" in features)
+            and "ensemble_mean" not in features
         )
 
         if is_normalized_pipeline:
@@ -153,12 +154,26 @@ class OODDetector:
                     if z > 2.5:
                         extreme_drivers.append(f"{key}_zscore_{round(z, 1)}")
         else:
+            means = dict(self.means)
+            stds = dict(self.stds)
+            # Variable-adaptive reference parameters for V3 physical features
+            if features.get("is_surface_pressure") == 1.0:
+                means["ensemble_mean"] = 101325.0
+                stds["ensemble_mean"] = 2500.0
+                means["ensemble_std"] = 100.0
+                stds["ensemble_std"] = 80.0
+            elif features.get("is_wind_speed_10m") == 1.0:
+                means["ensemble_mean"] = 4.5
+                stds["ensemble_mean"] = 3.5
+                means["ensemble_std"] = 1.5
+                stds["ensemble_std"] = 1.2
+
             for key, val in features.items():
                 if val is None or not isinstance(val, (int, float)) or math.isnan(val):
                     continue
-                if key in self.means and key in self.stds:
-                    m = self.means[key]
-                    s = self.stds[key]
+                if key in means and key in stds:
+                    m = means[key]
+                    s = stds[key]
                     z = abs(val - m) / s
                     squared_z_sum += z * z
                     n_matched += 1

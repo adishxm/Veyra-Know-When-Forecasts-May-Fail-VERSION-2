@@ -69,7 +69,7 @@ class OpenMeteoGEFSWeatherService(BaseWeatherService):
     ):
         self.api_url = api_url
         self.qc = qc_validator or ForecastQualityControl()
-        self.http_client = http_client or self._default_http_client
+        self.http_client = http_client
         self.data_version = data_version
         self.timeout_seconds = (
             timeout_seconds
@@ -381,7 +381,8 @@ class OpenMeteoGEFSWeatherService(BaseWeatherService):
 
             start_t = time.perf_counter()
             try:
-                raw = self.http_client(query_url)
+                fetch_fn = self.http_client if self.http_client is not None else self._default_http_client
+                raw = fetch_fn(query_url)
                 duration_ms = round((time.perf_counter() - start_t) * 1000, 2)
                 default_metrics.record_upstream_request("openmeteo", "SUCCESS", duration_ms)
                 logger.info(
