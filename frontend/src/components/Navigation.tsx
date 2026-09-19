@@ -3,7 +3,7 @@ import { Crosshair, Layers, Cpu, FileCode, ExternalLink, Menu, X, History, Compa
 
 export type ActiveView = 'sentinel' | 'replay' | 'analogs' | 'metrics' | 'batch' | 'models' | 'docs';
 
-const DOCS_EXTERNAL_URL = 'https://veyra-know-when-forecasts-may-fail.onrender.com/docs';
+const DOCS_EXTERNAL_URL = 'http://127.0.0.1:8000/docs';
 
 interface NavigationProps {
   view: ActiveView;

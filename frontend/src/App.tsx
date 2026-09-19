@@ -268,7 +268,7 @@ export const App: React.FC = () => {
             GitHub Repository
           </a>
           <a
-            href="https://veyra-know-when-forecasts-may-fail.onrender.com/docs"
+            href="http://127.0.0.1:8000/docs"
             target="_blank"
             rel="noreferrer"
           >

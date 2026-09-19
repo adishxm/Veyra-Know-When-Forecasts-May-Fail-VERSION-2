@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ExternalLink, RefreshCw, Shield, FileText, CheckCircle2 } from 'lucide-react';
 
-const DOCS_URL = 'https://veyra-know-when-forecasts-may-fail.onrender.com/docs';
+const DOCS_URL = 'http://127.0.0.1:8000/docs';
 
 export const ApiDocsView: React.FC = () => {
   const [iframeKey, setIframeKey] = useState<number>(0);
@@ -19,9 +19,9 @@ export const ApiDocsView: React.FC = () => {
         <div className="api-docs-toolbar-left">
           <FileText size={18} className="api-docs-icon" />
           <div>
-            <h2 className="api-docs-title">FastAPI Interactive Documentation</h2>
+            <h2 className="api-docs-title">Forecast-Bust Sentinel API — Swagger UI</h2>
             <div className="api-docs-subtitle">
-              OpenAPI 3.1 Specification &bull; Live Render Deployment
+              OpenAPI 3.1 Specification &bull; http://127.0.0.1:8000/docs
             </div>
           </div>
         </div>
