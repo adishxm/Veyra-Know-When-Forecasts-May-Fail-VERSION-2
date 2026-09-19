@@ -10,7 +10,7 @@ python scripts\banner.py
 echo  ===================================================================
 echo   Starting Veyra Sentinel Backend [port 8000]...
 echo  ===================================================================
-start "HEXARK-Backend" cmd /k "title HEXARK Backend [Port 8000] && python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload"
+start "HEXARK-Backend" cmd /c "title HEXARK-Backend && python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload"
 
 echo  [*] Waiting for backend to initialize...
 ping 127.0.0.1 -n 4 >nul
@@ -20,7 +20,7 @@ echo.
 echo  ===================================================================
 echo   Starting Veyra Dashboard Frontend [port 5173]...
 echo  ===================================================================
-start "HEXARK-Frontend" cmd /k "title HEXARK Frontend [Port 5173] && cd frontend && npm run dev"
+start "HEXARK-Frontend" cmd /c "title HEXARK-Frontend && cd frontend && npm run dev"
 
 echo  [*] Waiting for frontend to initialize...
 ping 127.0.0.1 -n 5 >nul
@@ -49,11 +49,12 @@ pause >nul
 
 :: --- Shutdown Servers ---
 echo.
-echo  [*] Shutting down servers...
-taskkill /FI "WINDOWTITLE eq HEXARK-Backend*" /F >nul 2>&1
-taskkill /FI "WINDOWTITLE eq HEXARK-Frontend*" /F >nul 2>&1
-taskkill /FI "WINDOWTITLE eq HEXARK Backend*" /F >nul 2>&1
-taskkill /FI "WINDOWTITLE eq HEXARK Frontend*" /F >nul 2>&1
-echo  [OK] All servers stopped.
+echo  [*] Shutting down servers and closing terminals...
+taskkill /FI "WINDOWTITLE eq HEXARK-Backend*" /T /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq HEXARK-Frontend*" /T /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq HEXARK Backend*" /T /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq HEXARK Frontend*" /T /F >nul 2>&1
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8000,5173 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+echo  [OK] All servers and spawned terminals closed.
 echo.
 ping 127.0.0.1 -n 2 >nul
