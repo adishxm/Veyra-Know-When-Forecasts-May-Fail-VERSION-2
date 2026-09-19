@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HistoricalAnalogItem, HistoricalAnalogResponse } from '../api/types';
+import { HistoricalAnalogItem } from '../api/types';
 import { apiClient } from '../api/client';
 
 interface AnalogExplorerProps {
@@ -94,7 +94,7 @@ export const AnalogExplorer: React.FC<AnalogExplorerProps> = ({
 }) => {
   const [analogs, setAnalogs] = useState<HistoricalAnalogItem[]>(BENCHMARK_ANALOGS);
   const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [_error, setError] = useState<string | null>(null);
   const [selectedRegime, setSelectedRegime] = useState<string>('ALL');
   const [minSimilarity, setMinSimilarity] = useState<number>(0.80);
   const [simulateNoEligible, setSimulateNoEligible] = useState<boolean>(false);

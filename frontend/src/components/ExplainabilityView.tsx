@@ -24,7 +24,7 @@ function formatSignal(signal: string): string {
 export const ExplainabilityView: React.FC<ExplainabilityViewProps> = ({
   explanation,
   issueTime,
-  validTime,
+  validTime: _validTime,
 }) => {
   if (!explanation) {
     return null;

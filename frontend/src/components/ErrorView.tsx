@@ -324,7 +324,7 @@ interface ErrorViewProps {
 
 export const ErrorView: React.FC<ErrorViewProps> = ({
   error,
-  onDismiss,
+  onDismiss: _onDismiss,
   onRetry,
   onSwitchToReplay,
 }) => {

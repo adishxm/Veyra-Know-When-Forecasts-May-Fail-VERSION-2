@@ -162,9 +162,9 @@ export const ForecastMap: React.FC<ForecastMapProps> = ({
   latitude = 28.6139,
   longitude = 77.2090,
   label = 'Location',
-  riskMapData,
+  riskMapData: _riskMapData,
   centroidErrorKm = 42.5,
-  highlightedRiskBand,
+  highlightedRiskBand: _highlightedRiskBand,
 }) => {
   const validLat = typeof latitude === 'number' && !isNaN(latitude) ? latitude : 28.6139;
   const validLon = typeof longitude === 'number' && !isNaN(longitude) ? longitude : 77.2090;

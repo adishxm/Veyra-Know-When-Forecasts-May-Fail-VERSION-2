@@ -221,8 +221,8 @@ export const App: React.FC = () => {
 
               {/* Model vs Baseline Comparative Toggle (§17, §20, File 090) */}
               <BaselineToggle
-                currentVeyraProbability={activeTimelinePoint?.response?.bust_probability ?? 0.58}
-                currentSpreadValue={activeTimelinePoint?.response?.uncertainty_pct ?? 4.8}
+                currentVeyraProbability={activeTimelinePoint?.bust_probability ?? dashboardData?.selected_prediction?.bust_probability ?? 0.58}
+                currentSpreadValue={dashboardData?.selected_prediction?.uncertainty_pct ?? 4.8}
                 variable={variable}
                 leadHours={selectedLeadHours || 48}
               />

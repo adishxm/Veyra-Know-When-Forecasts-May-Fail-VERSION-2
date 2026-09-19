@@ -90,7 +90,6 @@ export const ReplayView: React.FC = () => {
   const [isRevealed, setIsRevealed] = useState<boolean>(false);
 
   const activeStep = FROZEN_REPLAY_CASE.steps[currentStepIndex];
-  const isFinalLead = activeStep.leadHours <= 24;
 
   const handleReveal = () => {
     setIsRevealed(true);

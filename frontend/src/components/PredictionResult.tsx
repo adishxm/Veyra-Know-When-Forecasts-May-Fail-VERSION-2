@@ -1,5 +1,5 @@
 import React from 'react';
-import { PredictionResponse, RiskLevel, TrustState } from '../api/types';
+import { PredictionResponse, RiskLevel } from '../api/types';
 
 interface PredictionResultProps {
   prediction: PredictionResponse;
@@ -111,7 +111,7 @@ export const PredictionResult: React.FC<PredictionResultProps> = ({ prediction }
     abstain,
     reason_codes,
     model_version,
-    confidence_index,
+    confidence_index: _confidence_index,
     uncertainty_pct,
     ood_score,
     lead_hours,

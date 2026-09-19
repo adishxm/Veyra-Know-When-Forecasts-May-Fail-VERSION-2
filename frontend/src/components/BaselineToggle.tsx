@@ -10,8 +10,8 @@ interface BaselineComparisonProps {
 export const BaselineToggle: React.FC<BaselineComparisonProps> = ({
   currentVeyraProbability = 0.58,
   currentSpreadValue = 4.8,
-  variable = 'temperature_2m',
-  leadHours = 48,
+  variable: _variable = 'temperature_2m',
+  leadHours: _leadHours = 48,
 }) => {
   const [activeModel, setActiveModel] = useState<'veyra' | 'spread'>('veyra');
 

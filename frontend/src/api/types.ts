@@ -451,4 +451,25 @@ export interface ComprehensiveEvaluationResponse {
   generated_at?: string;
 }
 
+export interface MultiLocationPredictionRequest {
+  locations: string[];
+  target_date?: string;
+  variable?: string;
+  issue_time?: string;
+  valid_time?: string;
+  model_type?: string;
+}
 
+export interface MultiLocationPredictionItemResult {
+  input_location: string;
+  is_success: boolean;
+  response: PredictionResponse;
+}
+
+export interface MultiLocationPredictionResult {
+  batch_size: number;
+  successful_predictions: number;
+  abstained_predictions: number;
+  results: MultiLocationPredictionItemResult[];
+  metadata?: Record<string, any>;
+}
