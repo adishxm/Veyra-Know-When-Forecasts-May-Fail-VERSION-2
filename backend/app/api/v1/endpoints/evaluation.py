@@ -63,3 +63,17 @@ async def get_v3_model_evaluation(
 ) -> V3ModelEvaluationResponse:
     """Retrieve authoritative V3 frozen championship evaluation metrics."""
     return service.get_v3_evaluation()
+
+
+@router.get(
+    "/model/evaluation/comprehensive",
+    summary="Get Full §18.1 Comprehensive Evaluation Report",
+    description="Returns all 7 evaluation dimensions: discrimination & probability quality, warning lead-time gain, spatial metrics, safety/coverage-risk, stratification, operational burden, and explanation quality.",
+)
+async def get_comprehensive_evaluation_endpoint(
+    model: Optional[str] = Query(default="v3", description="Model identifier ('v3', 'legacy')"),
+    service: EvaluationIntegrationService = Depends(get_evaluation_service),
+) -> dict:
+    """Retrieve complete multi-dimensional evaluation report per §18.1."""
+    return service.get_comprehensive_evaluation(model_name=model)
+

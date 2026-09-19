@@ -44,8 +44,14 @@ class EvaluationMetrics(BaseModel):
         default=None, ge=0.0, le=1.0, description="Ensemble spread baseline PR-AUC benchmark"
     )
 
+    log_loss: Optional[float] = Field(default=None, description="Binary cross-entropy log loss")
+    calibration_slope: Optional[float] = Field(default=None, description="Platt calibration slope")
+    calibration_intercept: Optional[float] = Field(default=None, description="Platt calibration intercept")
+    warning_lead_time_gain_hours: Optional[float] = Field(
+        default=None, description="Median warning lead-time gain vs spread-only baseline (hours)"
+    )
+
     @field_validator("*", mode="before")
-    @classmethod
     def validate_finiteness(cls, v: Any) -> Any:
         """Validate that all numerical metrics are finite and non-NaN."""
         if isinstance(v, (int, float)):
@@ -91,6 +97,9 @@ class ModelEvaluationResponse(BaseModel):
     reason_codes: list[str] = Field(default_factory=list, description="Descriptive status / diagnostic reason codes")
     evaluated_at: Optional[str] = Field(default=None, description="Timestamp of evaluation execution")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional contextual evaluation metadata")
+    comprehensive_evaluation: Optional[dict[str, Any]] = Field(
+        default=None, description="Full §18.1 comprehensive evaluation suite results"
+    )
 
 
 class V3EvaluationMetrics(BaseModel):
@@ -103,6 +112,12 @@ class V3EvaluationMetrics(BaseModel):
     bss_vs_e0: float = Field(..., description="Brier Skill Score relative to climatology reference E0")
     bss_vs_e1b: float = Field(..., description="Brier Skill Score relative to persistence/ensemble logistic reference E1b")
     ece: float = Field(..., description="Expected Calibration Error across 10 equal-width bins on [0, 1]")
+    log_loss: Optional[float] = Field(default=None, description="Binary cross-entropy loss")
+    calibration_slope: Optional[float] = Field(default=None, description="Platt calibration slope")
+    calibration_intercept: Optional[float] = Field(default=None, description="Platt calibration intercept")
+    warning_lead_time_gain_hours: Optional[float] = Field(
+        default=None, description="Median warning lead-time gain vs spread-only baseline (hours)"
+    )
 
 
 class V3ModelEvaluationResponse(BaseModel):
@@ -122,3 +137,7 @@ class V3ModelEvaluationResponse(BaseModel):
     metrics: V3EvaluationMetrics = Field(..., description="Certified frozen evaluation metrics")
     provenance: dict[str, Any] = Field(default_factory=dict, description="Dataset and document provenance metadata")
     generalization_limits: list[str] = Field(default_factory=list, description="Explicit boundaries of scientific certification")
+    comprehensive_evaluation: Optional[dict[str, Any]] = Field(
+        default=None, description="Full §18.1 comprehensive evaluation suite results"
+    )
+
