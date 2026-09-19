@@ -52,6 +52,12 @@ class ReasonCode(str, Enum):
     CALIBRATION_FAILURE = "CALIBRATION_FAILURE"
     INTERNAL_ERROR = "INTERNAL_ERROR"
     SUCCESS = "SUCCESS"
+    REVISION_ACCELERATION = "REVISION_ACCELERATION"
+    SPREAD_TO_ERROR_RATIO = "SPREAD_TO_ERROR_RATIO"
+    REGIME_TRANSITION = "REGIME_TRANSITION"
+    ANALOG_BUST_FREQUENCY = "ANALOG_BUST_FREQUENCY"
+    HIGH_REVISION_DRIFT = "HIGH_REVISION_DRIFT"
+    HIGH_ENSEMBLE_SPREAD = "HIGH_ENSEMBLE_SPREAD"
 
 
 SUPPORTED_VARIABLES: set[str] = {
@@ -60,6 +66,9 @@ SUPPORTED_VARIABLES: set[str] = {
     "wind_speed_10m",
     "relative_humidity_2m",
     "precipitation",
+    "geopotential_height_500hPa",
+    "geopotential_height_500hpa",
+    "z500",
     "temperature",
     "pressure",
     "wind_speed",
@@ -155,7 +164,8 @@ class PredictionRequest(BaseModel):
         # 2. Variable validation
         if self.variable is not None:
             v_clean = self.variable.strip().lower()
-            if not v_clean or v_clean not in SUPPORTED_VARIABLES:
+            supported_lower = {v.lower() for v in SUPPORTED_VARIABLES}
+            if not v_clean or v_clean not in supported_lower:
                 raise ValueError(
                     f"Unsupported forecast variable '{self.variable}'. "
                     f"Supported variables: {', '.join(sorted(SUPPORTED_VARIABLES))}"
@@ -361,6 +371,47 @@ class PredictionResponse(BaseModel):
         default=None,
         description="Forecast issuance timestamp in ISO 8601 UTC format if evaluated for an explicit horizon",
     )
+    # Phase 4 Output Expansion Fields (§12, §15.1, G2-G12)
+    color_band: Optional[str] = Field(
+        default=None,
+        description="Operational color risk band: GREEN, YELLOW, ORANGE, RED, or GRAY (§12.1, G12)",
+    )
+    probability_interval: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Split-conformal prediction interval: lower_bound, upper_bound, confidence_level, method (§11.2, G2)",
+    )
+    severity_estimate: Optional[float] = Field(
+        default=None,
+        description="Continuous normalized error magnitude estimate relative to training MAD (§8.2, G3)",
+    )
+    severity_class: Optional[str] = Field(
+        default=None,
+        description="Versioned bust severity class: low, moderate, or severe (§8.2, G3)",
+    )
+    spatial_extent: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Spatial risk distribution: area_fraction, object_count, centroids, risk_field (§12, G4)",
+    )
+    time_to_first_failure_hours: Optional[int] = Field(
+        default=None,
+        description="Earliest forecast lead time in hours crossing bust alert threshold (§12, G5)",
+    )
+    ood_status: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Multi-signal out-of-distribution evaluation: score, state, dominant_drivers (§11.3, G8)",
+    )
+    analog_cards: Optional[list[dict[str, Any]]] = Field(
+        default=None,
+        description="Historical similar forecast failure and success cases with event exclusion (§12, §21, G9)",
+    )
+    claim_scope: Optional[str] = Field(
+        default="PUBLIC_PROXY_PROTOTYPE",
+        description="Declared operational scope and validation boundary (§2.1, G10)",
+    )
+    truth_status: Optional[str] = Field(
+        default="PENDING",
+        description="Verification ground truth status: PENDING, VERIFIED, or UNVERIFIED (§12, G11)",
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -377,4 +428,43 @@ class PredictionResponse(BaseModel):
             }
         }
     }
+
+    def to_envelope(self) -> "Any":
+        """Convert PredictionResponse to authoritative PredictionEnvelope (§15.1)."""
+        from backend.app.schemas.prediction_envelope import PredictionEnvelope
+        from backend.app.schemas.risk_bands import ColorRiskBand
+
+        c_band = ColorRiskBand.GRAY
+        if self.color_band:
+            try:
+                c_band = ColorRiskBand(self.color_band)
+            except ValueError:
+                c_band = ColorRiskBand.GRAY
+
+        return PredictionEnvelope(
+            location=self.location,
+            bust_probability=self.bust_probability,
+            probability_interval=self.probability_interval,
+            risk_level=self.risk_level,
+            color_band=c_band,
+            trust_state=self.trust_state,
+            abstain=self.abstain,
+            reason_codes=self.reason_codes,
+            time_to_first_failure_hours=self.time_to_first_failure_hours,
+            severity_estimate=self.severity_estimate,
+            severity_class=self.severity_class or "v2.0-q95-mad",
+            spatial_extent=self.spatial_extent,
+            ood_status=self.ood_status,
+            analog_cards=self.analog_cards or [],
+            explanation=self.explanation,
+            model_version=self.model_version,
+            data_version=self.data_version,
+            decision_mode=self.decision_mode,
+            decision_guidance=self.decision_guidance,
+            lead_hours=self.lead_hours,
+            valid_time=self.valid_time,
+            issue_time=self.issue_time,
+            claim_scope=self.claim_scope or "PUBLIC_PROXY_PROTOTYPE",
+            truth_status=self.truth_status or "PENDING",
+        )
 

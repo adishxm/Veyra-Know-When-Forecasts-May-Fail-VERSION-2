@@ -164,7 +164,7 @@ class OpenMeteoGEFSWeatherService(BaseWeatherService):
         params: dict[str, str] = {
             "latitude": str(norm_lat),
             "longitude": str(norm_lon),
-            "hourly": "temperature_2m,surface_pressure,wind_speed_10m,relative_humidity_2m,precipitation",
+            "hourly": "temperature_2m,surface_pressure,wind_speed_10m,relative_humidity_2m,precipitation,geopotential_height_500hPa",
             "models": "gfs_seamless",
             "timezone": "UTC",
             "wind_speed_unit": "ms",
@@ -218,6 +218,8 @@ class OpenMeteoGEFSWeatherService(BaseWeatherService):
             "wind_speed_10m": ("wind_speed_10m", "m/s"),
             "relative_humidity_2m": ("relative_humidity_2m", "%"),
             "precipitation": ("precipitation", "mm"),
+            "geopotential_height_500hPa": ("geopotential_height_500hPa", "m"),
+            "z500": ("geopotential_height_500hPa", "m"),
         }
 
         # Pre-compute issue datetime once outside the loop

@@ -56,6 +56,7 @@ def _generate_synthetic_gefs_from_url(url: str) -> dict[str, Any]:
     winds = [round(4.5 + (h % 12) * 0.1, 1) for h in range(num_hours)]
     humidities = [65.0 for _ in range(num_hours)]
     precips = [0.0 for _ in range(num_hours)]
+    z500s = [5600.0 for _ in range(num_hours)]
 
     return {
         "latitude": lat,
@@ -69,6 +70,7 @@ def _generate_synthetic_gefs_from_url(url: str) -> dict[str, Any]:
             "wind_speed_10m": winds,
             "relative_humidity_2m": humidities,
             "precipitation": precips,
+            "geopotential_height_500hPa": z500s,
         },
         "hourly_units": {
             "time": "iso8601",
@@ -77,6 +79,7 @@ def _generate_synthetic_gefs_from_url(url: str) -> dict[str, Any]:
             "wind_speed_10m": "m/s",
             "relative_humidity_2m": "%",
             "precipitation": "mm",
+            "geopotential_height_500hPa": "m",
         },
     }
 

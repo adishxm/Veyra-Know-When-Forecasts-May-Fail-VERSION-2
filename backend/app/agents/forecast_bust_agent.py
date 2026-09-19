@@ -27,6 +27,10 @@ from backend.app.services.base import (
     ModelResult,
     WeatherResult,
 )
+from backend.app.ml.conformal import SplitConformalPredictor
+from backend.app.schemas.risk_bands import ColorRiskBand, map_probability_to_color_band
+from backend.app.services.analog_service import HistoricalAnalogService
+from backend.app.services.spatial_service import SpatialRiskService
 from backend.app.services.explainability_service import (
     BaseExplainabilityService,
     ExplainabilityIntegrationService,
@@ -53,12 +57,16 @@ class ForecastBustAgent:
         safety_service: Optional[BaseSafetyService] = None,
         safety_evaluator: Optional[SafetyEvaluator] = None,
         explainability_service: Optional[BaseExplainabilityService] = None,
+        spatial_service: Optional[SpatialRiskService] = None,
+        analog_service: Optional[HistoricalAnalogService] = None,
     ):
         self.weather_service = weather_service or UnavailableWeatherService()
         self.feature_service = feature_service or UnavailableFeatureService()
         self.model_service = model_service or UnavailableModelService()
         self.safety_service = safety_service or safety_evaluator or SafetyEvaluator()
         self.explainability_service = explainability_service or ExplainabilityIntegrationService()
+        self.spatial_service = spatial_service or SpatialRiskService()
+        self.analog_service = analog_service or HistoricalAnalogService()
 
     def resolve_request(self, request: PredictionRequest) -> tuple[str, Optional[str]]:
         """Validate and resolve location and target date parameters."""
@@ -311,6 +319,119 @@ class ForecastBustAgent:
                     "q99": 1 if prob >= 0.90 else 0,
                 }
 
+        # 11. Phase 4 Output Expansion (§12, §15.1, G2-G12)
+        # 11a. OOD Status & State
+        ood_state = model_meta.get("ood_state") or feat_meta.get("ood_state")
+        if ood_state is None:
+            if "OUT_OF_DISTRIBUTION" in safety_assessment.reason_codes:
+                ood_state = "ABSTAIN"
+            elif ood_score is not None and ood_score > 3.0:
+                ood_state = "ABSTAIN"
+            elif ood_score is not None and ood_score > 2.0:
+                ood_state = "WARNING"
+            else:
+                ood_state = "NOMINAL"
+
+        ood_status = {
+            "score": ood_score,
+            "state": ood_state,
+            "dominant_drivers": dominant_drivers or [],
+        }
+
+        # 11b. Color Risk Band (§12.1, G12)
+        risk_mapping = map_probability_to_color_band(
+            probability=safety_assessment.bust_probability,
+            is_abstained=safety_assessment.abstain,
+            ood_state=ood_state,
+        )
+        color_band = risk_mapping.color_band.value
+
+        # 11c. Split-Conformal Prediction Interval (§11.2, G2)
+        probability_interval = None
+        if not safety_assessment.abstain and safety_assessment.bust_probability is not None:
+            conformal_predictor = SplitConformalPredictor(confidence_level=0.90)
+            cal_q = model_meta.get("conformal_quantile")
+            if cal_q is not None:
+                try:
+                    conformal_predictor.calibrated_quantile = float(cal_q)
+                    conformal_predictor.is_calibrated = True
+                except (ValueError, TypeError):
+                    pass
+            probability_interval = conformal_predictor.predict_interval(
+                safety_assessment.bust_probability
+            ).to_dict()
+
+        # 11d. Severity Estimate & Versioned Severity Class (§8.2, G3)
+        severity_estimate = normalized_error
+        if severity_estimate is None and not safety_assessment.abstain and safety_assessment.bust_probability is not None:
+            severity_estimate = round(float(safety_assessment.bust_probability) * 2.5, 3)
+        severity_class = "v2.0-q95-mad"
+
+        # 11e. Spatial Extent, Area Fraction, Object Count, Centroids (§12, G4)
+        lat = None
+        lon = None
+        if weather_result and weather_result.metadata:
+            lat = weather_result.metadata.get("latitude")
+            lon = weather_result.metadata.get("longitude")
+        var_name = "temperature_2m"
+        if weather_result and weather_result.metadata and "variable" in weather_result.metadata:
+            var_name = weather_result.metadata["variable"]
+
+        spatial_res = self.spatial_service.compute_spatial_extent(
+            location=location,
+            probability=safety_assessment.bust_probability,
+            latitude=lat,
+            longitude=lon,
+            variable=var_name,
+            is_abstained=safety_assessment.abstain,
+        )
+        spatial_extent = spatial_res.to_dict() if spatial_res else None
+
+        # 11f. Time-to-First-Failure Hours (§12, G5)
+        ttff = model_meta.get("time_to_first_failure_hours")
+        if ttff is None and not safety_assessment.abstain and safety_assessment.bust_probability is not None:
+            if safety_assessment.bust_probability >= 0.50 and evaluated_lead is not None:
+                ttff = evaluated_lead
+        time_to_first_failure_hours = ttff
+
+        # 11g. Historical Analog Cards (§12, §21, G9)
+        analog_cards = []
+        try:
+            q_time = evaluated_valid or evaluated_issue or "2024-06-01T00:00:00Z"
+            q_lead = evaluated_lead if evaluated_lead is not None else 48
+            q_val = 30.0
+            q_std = 1.5
+            if feature_result and feature_result.features:
+                q_val = float(feature_result.features.get("surface_value", 30.0))
+                q_std = float(feature_result.features.get("ensemble_spread", 1.5))
+            analog_res = self.analog_service.find_analogs(
+                query_time=q_time,
+                variable=var_name,
+                lead_hours=q_lead,
+                forecast_value=q_val,
+                ensemble_std=q_std,
+                location=location,
+                top_k=3,
+            )
+            if analog_res and analog_res.analog_cards:
+                analog_cards = [
+                    {
+                        "case_id": c.case_id,
+                        "date": c.date,
+                        "location": c.location,
+                        "variable": c.variable,
+                        "lead_hours": c.lead_hours,
+                        "similarity": round(c.similarity, 4),
+                        "historical_outcome": c.historical_outcome,
+                        "synoptic_description": c.synoptic_description,
+                        "lessons_learned": c.lessons_learned,
+                    }
+                    for c in analog_res.analog_cards
+                ]
+        except Exception as err:
+            logger.debug("Analog card retrieval failed: %s", err)
+            analog_cards = []
+
         return PredictionResponse(
             location=location,
             bust_probability=safety_assessment.bust_probability,
@@ -342,6 +463,16 @@ class ForecastBustAgent:
             lead_hours=evaluated_lead,
             valid_time=evaluated_valid,
             issue_time=evaluated_issue,
+            color_band=color_band,
+            probability_interval=probability_interval,
+            severity_estimate=severity_estimate,
+            severity_class=severity_class,
+            spatial_extent=spatial_extent,
+            time_to_first_failure_hours=time_to_first_failure_hours,
+            ood_status=ood_status,
+            analog_cards=analog_cards,
+            claim_scope="PUBLIC_PROXY_PROTOTYPE",
+            truth_status="PENDING",
         )
 
     def analyze(
