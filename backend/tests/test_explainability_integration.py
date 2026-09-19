@@ -253,11 +253,11 @@ def test_validate_explanation_from_builder2_dataclass(explainer_service: Explain
 
 def test_single_prediction_api_returns_valid_explanation(client: TestClient):
     """Verify POST /v1/predict returns structured explanation for valid location."""
-    response = client.post("/v1/predict", json={"location": "London"})
+    response = client.post("/v1/predict", json={"location": "Mumbai"})
     assert response.status_code == 200
     data = response.json()
 
-    assert data["location"] == "London"
+    assert data["location"] == "Mumbai"
     assert data["abstain"] is False
     assert data["bust_probability"] is not None
     assert data["trust_state"] == "HIGH_CONFIDENCE"
@@ -360,7 +360,7 @@ def test_openapi_schema_contains_explanation_contract(client: TestClient):
 
 def test_probability_invariance_under_explanation(client: TestClient):
     """Verify that explanation integration does not alter the underlying bust probability or decision logic."""
-    response = client.post("/v1/predict", json={"location": "London"})
+    response = client.post("/v1/predict", json={"location": "Mumbai"})
     assert response.status_code == 200
     data = response.json()
 

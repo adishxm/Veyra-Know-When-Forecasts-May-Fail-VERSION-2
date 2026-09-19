@@ -412,6 +412,43 @@ class PredictionResponse(BaseModel):
         default="PENDING",
         description="Verification ground truth status: PENDING, VERIFIED, or UNVERIFIED (§12, G11)",
     )
+    # Phase 9 Failure Handling, Security & Scope Enforcement Fields (§1, §3.1, §21, §22)
+    is_certified: Optional[bool] = Field(
+        default=True,
+        description="Whether query parameters conform strictly to certified operational scope (A3)",
+    )
+    outside_certified_domain: Optional[bool] = Field(
+        default=False,
+        description="Whether requested location is outside the certified Indian subcontinental domain (A4)",
+    )
+    uncertified_horizon: Optional[bool] = Field(
+        default=False,
+        description="Whether forecast lead time is outside certified 24h-240h medium range (A5)",
+    )
+    uncertified_variable: Optional[bool] = Field(
+        default=False,
+        description="Whether evaluated weather variable is uncertified (A3)",
+    )
+    is_degraded: Optional[bool] = Field(
+        default=False,
+        description="Whether forecast evaluation ran in degraded mode due to incomplete ensemble (K2)",
+    )
+    is_fallback_cycle: Optional[bool] = Field(
+        default=False,
+        description="Whether evaluation used previous cached cycle due to upstream NWP delay (K1)",
+    )
+    is_baseline_fallback: Optional[bool] = Field(
+        default=False,
+        description="Whether evaluation fell back to calibrated spread-only baseline due to model unavailability (K3)",
+    )
+    human_approval_status: Optional[str] = Field(
+        default="PENDING",
+        description="Human forecaster review and sign-off status: PENDING, APPROVED, REJECTED, OVERRIDDEN (A2)",
+    )
+    prediction_id: Optional[str] = Field(
+        default=None,
+        description="Unique traceable identifier for audit logging and human review (L3)",
+    )
 
     model_config = {
         "json_schema_extra": {

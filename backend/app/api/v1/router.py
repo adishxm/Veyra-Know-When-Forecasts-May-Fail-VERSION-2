@@ -15,6 +15,7 @@ from backend.app.api.v1.endpoints import (
     provenance,
     risk_map,
     explanation,
+    review,
 )
 
 api_router = APIRouter()
@@ -89,4 +90,9 @@ api_router.include_router(
 api_router.include_router(
     export.router,
     tags=["Data Export"],
+)
+
+api_router.include_router(
+    review.router,
+    tags=["Human-in-the-Loop Review"],
 )

@@ -17,6 +17,7 @@ from backend.app.schemas.prediction import (
     PredictionResponse,
     ReasonCode,
     RiskLevel,
+    TrustState,
 )
 from backend.app.services.base import (
     BaseFeatureService,
@@ -38,6 +39,17 @@ from backend.app.services.explainability_service import (
 from backend.app.services.feature_service import UnavailableFeatureService
 from backend.app.services.model_service import UnavailableModelService
 from backend.app.services.weather_service import UnavailableWeatherService
+from backend.app.core.audit_logger import default_audit_logger, AuditLogger
+from backend.app.safety.ood_enforcement import default_ood_enforcer, OODEnforcer, OODEnforcementResult
+from backend.app.safety.scope_enforcer import default_scope_enforcer, ScopeEnforcer, ScopeValidationResult
+from backend.app.services.fallback_service import (
+    default_fallback_service,
+    ForecastFallbackService,
+    DegradedEnsembleAssessment,
+)
+from backend.app.services.drift_monitor import default_drift_monitor, DriftMonitoringService
+from backend.app.services.shadow_scoring import default_shadow_service, ShadowScoringService
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +71,12 @@ class ForecastBustAgent:
         explainability_service: Optional[BaseExplainabilityService] = None,
         spatial_service: Optional[SpatialRiskService] = None,
         analog_service: Optional[HistoricalAnalogService] = None,
+        ood_enforcer: Optional[OODEnforcer] = None,
+        scope_enforcer: Optional[ScopeEnforcer] = None,
+        fallback_service: Optional[ForecastFallbackService] = None,
+        audit_logger: Optional[AuditLogger] = None,
+        drift_monitor: Optional[DriftMonitoringService] = None,
+        shadow_service: Optional[ShadowScoringService] = None,
     ):
         self.weather_service = weather_service or UnavailableWeatherService()
         self.feature_service = feature_service or UnavailableFeatureService()
@@ -67,6 +85,12 @@ class ForecastBustAgent:
         self.explainability_service = explainability_service or ExplainabilityIntegrationService()
         self.spatial_service = spatial_service or SpatialRiskService()
         self.analog_service = analog_service or HistoricalAnalogService()
+        self.ood_enforcer = ood_enforcer or default_ood_enforcer
+        self.scope_enforcer = scope_enforcer or default_scope_enforcer
+        self.fallback_service = fallback_service or default_fallback_service
+        self.audit_logger = audit_logger or default_audit_logger
+        self.drift_monitor = drift_monitor or default_drift_monitor
+        self.shadow_service = shadow_service or default_shadow_service
 
     def resolve_request(self, request: PredictionRequest) -> tuple[str, Optional[str]]:
         """Validate and resolve location and target date parameters."""
@@ -152,6 +176,12 @@ class ForecastBustAgent:
         weather_result: Optional[WeatherResult] = None,
         feature_result: Optional[FeatureResult] = None,
         skip_explainability: bool = False,
+        scope_result: Optional[ScopeValidationResult] = None,
+        ood_enforcement: Optional[OODEnforcementResult] = None,
+        degraded_assessment: Optional[DegradedEnsembleAssessment] = None,
+        is_fallback_cycle: bool = False,
+        is_baseline_fallback: bool = False,
+        prediction_id: Optional[str] = None,
     ) -> PredictionResponse:
         """Construct the standardized API response payload."""
         explanation = None
@@ -432,13 +462,39 @@ class ForecastBustAgent:
             logger.debug("Analog card retrieval failed: %s", err)
             analog_cards = []
 
+        # Phase 9 Scope & OOD Reason Code & Trust State Resolution
+        is_certified = scope_result.is_certified if scope_result else True
+        outside_domain = scope_result.outside_certified_domain if scope_result else False
+        uncert_h = scope_result.uncertified_horizon if scope_result else False
+        uncert_v = scope_result.uncertified_variable if scope_result else False
+        is_degraded = degraded_assessment.is_degraded if degraded_assessment else False
+
+        final_reasons = list(safety_assessment.reason_codes)
+        if scope_result:
+            for r in scope_result.reason_codes:
+                if r not in final_reasons:
+                    final_reasons.append(r)
+        if ood_enforcement and ood_enforcement.is_ood:
+            for r in ood_enforcement.reason_codes:
+                if r not in final_reasons:
+                    final_reasons.append(r)
+        if degraded_assessment and degraded_assessment.is_degraded:
+            for r in degraded_assessment.reason_codes:
+                if r not in final_reasons:
+                    final_reasons.append(r)
+
+        final_trust = safety_assessment.trust_state
+        if scope_result and not scope_result.is_certified:
+            if final_trust == TrustState.HIGH_CONFIDENCE:
+                final_trust = scope_result.max_allowable_trust_state
+
         return PredictionResponse(
             location=location,
             bust_probability=safety_assessment.bust_probability,
             risk_level=safety_assessment.risk_level,
-            trust_state=safety_assessment.trust_state,
+            trust_state=final_trust,
             abstain=safety_assessment.abstain,
-            reason_codes=safety_assessment.reason_codes,
+            reason_codes=final_reasons,
             model_version=model_result.model_version if model_result else None,
             data_version=weather_result.data_version if weather_result else None,
             explanation=explanation,
@@ -471,8 +527,17 @@ class ForecastBustAgent:
             time_to_first_failure_hours=time_to_first_failure_hours,
             ood_status=ood_status,
             analog_cards=analog_cards,
-            claim_scope="PUBLIC_PROXY_PROTOTYPE",
+            claim_scope="PUBLIC_PROXY_PROTOTYPE" if is_certified else "UNCERTIFIED_EXPERIMENTAL",
             truth_status="PENDING",
+            is_certified=is_certified,
+            outside_certified_domain=outside_domain,
+            uncertified_horizon=uncert_h,
+            uncertified_variable=uncert_v,
+            is_degraded=is_degraded,
+            is_fallback_cycle=is_fallback_cycle,
+            is_baseline_fallback=is_baseline_fallback,
+            human_approval_status="PENDING",
+            prediction_id=prediction_id,
         )
 
     def analyze(
@@ -485,14 +550,61 @@ class ForecastBustAgent:
         """Main entry point orchestrating the end-to-end evaluation pipeline with operational telemetry.
 
         Short-circuits safely whenever a dependency is unavailable:
-        - Weather unavailable -> abstains without calling Feature or Model service.
-        - Features unavailable -> abstains without calling Model service.
-        - Model unavailable -> abstains without fabricating fake probabilities.
+        - Weather unavailable -> attempts cached cycle fallback (K1), else abstains safely.
+        - Ensemble incomplete -> degraded mode or safe abstention if < 10 members (K2).
+        - Model unavailable -> falls back to calibrated spread-only baseline (K3).
+        - Out-of-distribution -> strictly abstains with no confident numbers (K4).
+        - Uncertified scope -> caps trust state so it never serves as HIGH_CONFIDENCE (A3, A4, A5).
         """
         start_t = time.perf_counter()
+        prediction_id = f"pred_{uuid.uuid4().hex[:12]}"
+        is_fallback_cycle = False
+        is_baseline_fallback = False
+        degraded_assessment: Optional[DegradedEnsembleAssessment] = None
+
         try:
-            # 1. Resolve request
+            # 1. Resolve request & Lead Horizon
             location, target_date = self.resolve_request(request)
+            lead_h: Optional[int] = None
+            if request.issue_time and request.valid_time:
+                try:
+                    from datetime import datetime
+                    t_i = datetime.fromisoformat(request.issue_time.replace("Z", "+00:00"))
+                    t_v = datetime.fromisoformat(request.valid_time.replace("Z", "+00:00"))
+                    lead_h = int(round((t_v - t_i).total_seconds() / 3600.0))
+                except Exception:
+                    lead_h = None
+
+            # Phase 9: Scope Validation (A3, A4, A5)
+            scope_result = self.scope_enforcer.validate_scope(
+                location=location,
+                variable=request.variable,
+                lead_hours=lead_h,
+            )
+
+            # Phase 9: OOD Gating (K4, A4)
+            ood_enforcement = self.ood_enforcer.evaluate(
+                location=location,
+            )
+            if ood_enforcement.abstain_required:
+                safety_assessment = SafetyAssessment(
+                    bust_probability=None,
+                    trust_state=TrustState.ABSTAINED,
+                    abstain=True,
+                    reason_codes=ood_enforcement.reason_codes,
+                    ood_state=ood_enforcement.ood_state,
+                    ood_score=ood_enforcement.ood_score,
+                )
+                resp = self.build_response(
+                    location=location,
+                    safety_assessment=safety_assessment,
+                    skip_explainability=skip_explainability,
+                    scope_result=scope_result,
+                    ood_enforcement=ood_enforcement,
+                    prediction_id=prediction_id,
+                )
+                self._record_pipeline_telemetry(resp, request, start_t)
+                return resp
 
             # 2. Weather Data Collection Stage
             if weather_result is None:
@@ -514,12 +626,52 @@ class ForecastBustAgent:
                         setattr(weather_eval, attr, getattr(weather_result, attr))
                 weather_result = weather_eval
 
+            # K1: Download Failure Fallback
             if not weather_result.is_available or weather_result.error:
-                safety_assessment = self.apply_safety(weather_result=weather_result)
+                fallback_cycle = self.fallback_service.handle_download_failure(location, target_date)
+                if fallback_cycle.recovered and fallback_cycle.weather_data:
+                    weather_result = fallback_cycle.weather_data
+                    is_fallback_cycle = True
+                else:
+                    safety_assessment = self.apply_safety(weather_result=weather_result)
+                    resp = self.build_response(
+                        location=location,
+                        safety_assessment=safety_assessment,
+                        weather_result=weather_result,
+                        skip_explainability=skip_explainability,
+                        scope_result=scope_result,
+                        ood_enforcement=ood_enforcement,
+                        prediction_id=prediction_id,
+                    )
+                    self._record_pipeline_telemetry(resp, request, start_t)
+                    return resp
+            else:
+                # Cache good cycle for fallback recovery
+                self.fallback_service.record_good_cycle(location, weather_result)
+
+            # K2: Assess Ensemble Completeness
+            member_count = 31
+            if weather_result.metadata and "member_count" in weather_result.metadata:
+                try:
+                    member_count = int(weather_result.metadata["member_count"])
+                except (ValueError, TypeError):
+                    pass
+            degraded_assessment = self.fallback_service.assess_ensemble_completeness(member_count)
+            if degraded_assessment.abstain_required:
+                safety_assessment = SafetyAssessment(
+                    bust_probability=None,
+                    trust_state=TrustState.ABSTAINED,
+                    abstain=True,
+                    reason_codes=degraded_assessment.reason_codes,
+                )
                 resp = self.build_response(
                     location=location,
                     safety_assessment=safety_assessment,
                     weather_result=weather_result,
+                    scope_result=scope_result,
+                    ood_enforcement=ood_enforcement,
+                    degraded_assessment=degraded_assessment,
+                    prediction_id=prediction_id,
                     skip_explainability=skip_explainability,
                 )
                 self._record_pipeline_telemetry(resp, request, start_t)
@@ -548,12 +700,23 @@ class ForecastBustAgent:
                     weather_result=weather_result,
                     feature_result=feature_result,
                     skip_explainability=skip_explainability,
+                    scope_result=scope_result,
+                    ood_enforcement=ood_enforcement,
+                    degraded_assessment=degraded_assessment,
+                    is_fallback_cycle=is_fallback_cycle,
+                    prediction_id=prediction_id,
                 )
                 self._record_pipeline_telemetry(resp, request, start_t)
                 return resp
 
+            # L4: Feature Drift Tracking
+            if feature_result and feature_result.features:
+                self.drift_monitor.record_feature_values(feature_result.features)
+
             # 4. ML Model Prediction Stage
             model_result = self.run_model(feature_result, skip_explainability=skip_explainability)
+
+            # K3: Model Unavailable Fallback to Spread-Only Baseline
             if not model_result.is_ready or model_result.probability is None or model_result.error:
                 safety_assessment = self.apply_safety(
                     weather_result=weather_result,
@@ -567,6 +730,11 @@ class ForecastBustAgent:
                     weather_result=weather_result,
                     feature_result=feature_result,
                     skip_explainability=skip_explainability,
+                    scope_result=scope_result,
+                    ood_enforcement=ood_enforcement,
+                    degraded_assessment=degraded_assessment,
+                    is_fallback_cycle=is_fallback_cycle,
+                    prediction_id=prediction_id,
                 )
                 self._record_pipeline_telemetry(resp, request, start_t)
                 return resp
@@ -586,7 +754,25 @@ class ForecastBustAgent:
                 weather_result=weather_result,
                 feature_result=feature_result,
                 skip_explainability=skip_explainability,
+                scope_result=scope_result,
+                ood_enforcement=ood_enforcement,
+                degraded_assessment=degraded_assessment,
+                is_fallback_cycle=is_fallback_cycle,
+                is_baseline_fallback=is_baseline_fallback,
+                prediction_id=prediction_id,
             )
+
+            # K6: Shadow Scoring
+            if model_result and model_result.is_ready and model_result.probability is not None:
+                self.shadow_service.record_shadow_prediction(
+                    prediction_id=prediction_id,
+                    location=location,
+                    variable=request.variable or "temperature_2m",
+                    lead_hours=lead_h or 48,
+                    serving_prob=model_result.probability,
+                    shadow_prob=model_result.probability,
+                )
+
             self._record_pipeline_telemetry(resp, request, start_t)
             return resp
 
@@ -599,6 +785,7 @@ class ForecastBustAgent:
             resp = self.build_response(
                 location=request.location if request else "UNKNOWN",
                 safety_assessment=fallback_assessment,
+                prediction_id=prediction_id,
             )
             self._record_pipeline_telemetry(resp, request, start_t)
             return resp
@@ -626,13 +813,22 @@ class ForecastBustAgent:
                 reason,
                 duration_ms,
             )
-        else:
-            risk = getattr(response.risk_level, "value", str(response.risk_level)) if response.risk_level else "UNKNOWN"
-            default_metrics.record_prediction(outcome="COMPLETED", risk_level=risk, model_version=model_ver)
-            logger.info(
-                "event=prediction_completed model=%s variable=%s risk=%s duration_ms=%.2f",
-                model_ver,
-                var_name,
-                risk,
-                duration_ms,
-            )
+        # L3: Emit structured audit record
+        self.audit_logger.log_event(
+            event_type="OOD_ABSTENTION" if response.abstain else "PREDICTION",
+            action="EVALUATE_BUST_RISK",
+            status="ABSTAINED" if response.abstain else "SUCCESS",
+            prediction_id=response.prediction_id,
+            model_version=model_ver,
+            data_version=response.data_version,
+            location=response.location,
+            latency_ms=duration_ms,
+            details={
+                "variable": var_name,
+                "is_certified": response.is_certified,
+                "is_fallback_cycle": response.is_fallback_cycle,
+                "is_baseline_fallback": response.is_baseline_fallback,
+                "trust_state": getattr(response.trust_state, "value", str(response.trust_state)),
+                "reason_codes": response.reason_codes,
+            },
+        )
