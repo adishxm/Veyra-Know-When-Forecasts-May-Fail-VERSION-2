@@ -1,59 +1,10 @@
 @echo off
 cd /d "%~dp0"
 title HEXARK - Veyra Sentinel Launcher
-color 0B
 cls
 
-echo.
-echo   ===================================================================
-echo.
-echo     #    #  ######  #    #    ##    #####   #    #
-echo     #    #  #        #  #    #  #   #    #  #   # 
-echo     ######  #####     ##    #    #  #####   ####  
-echo     #    #  #         ##    ######  #  #    #  #  
-echo     #    #  #        #  #   #    #  #   #   #   # 
-echo     #    #  ######  #    #  #    #  #    #  #    #
-echo.
-echo   ===================================================================
-echo         VEYRA SENTINEL - Atmospheric Forecast Reliability Platform
-echo         Team HEXARK - SIH 2026 - Problem Statement 26079
-echo   ===================================================================
-echo.
-
-:: --- Verify Python ---
-echo  [*] Checking Python installation...
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo  [ERROR] Python is not installed or not in PATH.
-    echo         Please install Python 3.10+ and try again.
-    pause
-    exit /b 1
-)
-for /f "tokens=*" %%v in ('python --version 2^>^&1') do echo  [OK] %%v detected
-
-:: --- Verify Node.js ---
-echo  [*] Checking Node.js installation...
-node --version >nul 2>&1
-if errorlevel 1 (
-    echo  [ERROR] Node.js is not installed or not in PATH.
-    echo         Please install Node.js 18+ and try again.
-    pause
-    exit /b 1
-)
-for /f "tokens=*" %%v in ('node --version 2^>^&1') do echo  [OK] Node.js %%v detected
-echo.
-
-:: --- Verify Frontend Dependencies ---
-if not exist "frontend\node_modules" (
-    echo  [*] Installing frontend dependencies [first-time setup]...
-    cd frontend
-    call npm install
-    cd ..
-    echo  [OK] Frontend dependencies installed.
-) else (
-    echo  [OK] Frontend dependencies already installed.
-)
-echo.
+:: --- Display Fastfetch Dashboard ---
+python scripts\banner.py
 
 :: --- Start Backend Server ---
 echo  ===================================================================
