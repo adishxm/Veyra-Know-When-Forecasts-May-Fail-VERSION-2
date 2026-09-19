@@ -227,4 +227,9 @@ Builder 2 can easily extend or replace any pipeline stage by implementing the ty
 
 Pass custom implementations into `ForecastBustAgent` via dependency injection without modifying the core application orchestrator.
 
-# Veyra-Know-When-Forecasts-May-Fail-VERSION-2
+---
+
+## 👥 Contributors & Collaborators
+
+- **[adishxm](https://github.com/adishxm)** — Primary Lead & Author ([Veyra-Know-When-Forecasts-May-Fail-VERSION-2](https://github.com/adishxm/Veyra-Know-When-Forecasts-May-Fail-VERSION-2))
+- **[Parinidhi Jain](https://github.com/ParinidhiJain101)** — Core Contributor, Scientific Research & Builder 2 ML Development ([Veyra-Know-When-Forecasts-May-Fail](https://github.com/ParinidhiJain101/Veyra-Know-When-Forecasts-May-Fail))
