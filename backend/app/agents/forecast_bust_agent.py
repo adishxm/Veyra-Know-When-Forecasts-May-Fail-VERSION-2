@@ -87,7 +87,7 @@ class ForecastBustAgent:
         self.analog_service = analog_service or HistoricalAnalogService()
         self.ood_enforcer = ood_enforcer or default_ood_enforcer
         self.scope_enforcer = scope_enforcer or default_scope_enforcer
-        self.fallback_service = fallback_service or default_fallback_service
+        self.fallback_service = fallback_service or ForecastFallbackService()
         self.audit_logger = audit_logger or default_audit_logger
         self.drift_monitor = drift_monitor or default_drift_monitor
         self.shadow_service = shadow_service or default_shadow_service

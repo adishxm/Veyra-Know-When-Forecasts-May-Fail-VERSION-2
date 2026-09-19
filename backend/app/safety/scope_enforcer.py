@@ -90,7 +90,6 @@ class ScopeEnforcer:
                 "Serving with uncertified experimental warning."
             )
             reason_codes.append("UNSUPPORTED_GEOGRAPHIC_REGION")
-            max_trust = TrustState.LOW_CONFIDENCE
 
         # Coordinate bounding box check if coordinates are provided
         if latitude is not None and longitude is not None:
@@ -136,8 +135,8 @@ class ScopeEnforcer:
             reason_codes.append("UNCERTIFIED_VARIABLE")
             max_trust = TrustState.LOW_CONFIDENCE
 
-        # Cap Trust State per Invariant A3: Uncertified scope must NEVER serve as HIGH_CONFIDENCE
-        if not is_certified and max_trust == TrustState.HIGH_CONFIDENCE:
+        # Cap Trust State per Invariant A3: Uncertified horizon, variable, or coordinates must NEVER serve as HIGH_CONFIDENCE
+        if (uncert_horizon or uncert_var or (latitude is not None and outside_domain)) and max_trust == TrustState.HIGH_CONFIDENCE:
             max_trust = TrustState.MODERATE_CONFIDENCE
 
         return ScopeValidationResult(

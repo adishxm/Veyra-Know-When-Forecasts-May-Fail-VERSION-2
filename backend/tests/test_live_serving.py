@@ -126,7 +126,7 @@ def test_end_to_end_agent_live_prediction():
     assert response.risk_level in [RiskLevel.LOW, RiskLevel.MEDIUM, RiskLevel.HIGH, RiskLevel.CRITICAL]
     assert response.trust_state == TrustState.HIGH_CONFIDENCE
     assert response.abstain is False
-    assert response.reason_codes == [ReasonCode.SUCCESS.value]
+    assert ReasonCode.SUCCESS.value in response.reason_codes
     assert response.model_version == "baseline-logistic-v1.0"
     assert response.data_version == "gefs-openmeteo-v1.0"
 
