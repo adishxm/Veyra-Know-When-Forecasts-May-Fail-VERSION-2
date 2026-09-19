@@ -16,7 +16,7 @@ echo     #    #  ######  #    #  #    #  #    #  #    #
 echo.
 echo   ===================================================================
 echo         VEYRA SENTINEL - Atmospheric Forecast Reliability Platform
-echo         Team HEXARK - SIH 2024 - Problem Statement 26079
+echo         Team HEXARK - SIH 2026 - Problem Statement 26079
 echo   ===================================================================
 echo.
 
