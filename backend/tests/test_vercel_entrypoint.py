@@ -90,16 +90,6 @@ def test_pyproject_toml_vercel_entrypoint():
     assert 'entrypoint = "backend.app.main:app"' in content, "Vercel entrypoint must point to backend.app.main:app"
 
 
-def test_vercel_json_build_command():
-    """Verify vercel.json defines frontend buildCommand."""
-    vercel_json_path = REPO_ROOT / "vercel.json"
-    assert vercel_json_path.is_file(), "vercel.json must exist at repository root"
-    data = json.loads(vercel_json_path.read_text(encoding="utf-8"))
-    assert "buildCommand" in data
-    assert "npm" in data["buildCommand"]
-    assert "build" in data["buildCommand"]
-
-
 def test_v3_artifacts_exact_provenance():
     """Verify V3 model artifacts SHA-256 and feature schema count."""
     model_path = REPO_ROOT / "models" / "v3" / "lightgbm_v3_challenger.joblib"

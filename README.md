@@ -314,7 +314,6 @@ SIH26079-RII/
 ├── pyproject.toml                     # Python package metadata
 ├── pytest.ini                         # Test runner configuration
 ├── requirements.txt                   # Core Python dependencies
-├── vercel.json                        # Frontend deployment specification
 ├── launch.bat                         # One-click Windows launcher
 │
 ├── .github/workflows/                 # Automated CI/CD pipelines
