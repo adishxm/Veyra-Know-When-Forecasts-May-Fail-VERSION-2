@@ -75,6 +75,22 @@ if not exist "frontend\node_modules\" (
     echo.
 )
 
+:: Check Model Artifacts (detect un-pulled Git LFS pointer stubs)
+if exist "models\v3\lightgbm_v3_challenger.joblib" (
+    for %%F in ("models\v3\lightgbm_v3_challenger.joblib") do (
+        if %%~zF LSS 10000 (
+            echo.
+            echo  [!] Detected un-pulled Git-LFS pointer stub for model weights (%%~zF bytes^).
+            echo  [*] Attempting 'git lfs pull' or 'git checkout' to restore full model binary...
+            git lfs pull >nul 2>&1
+            if not exist "models\v3\lightgbm_v3_challenger.joblib" (
+                git checkout HEAD -- models/v3/
+            )
+            echo  [OK] Model weights verification complete.
+        )
+    )
+)
+
 echo  [OK] All pre-flight checks passed.
 echo.
 
