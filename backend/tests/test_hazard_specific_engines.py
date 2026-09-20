@@ -15,6 +15,7 @@ from backend.app.builder2.precipitation_specialist import PrecipitationReliabili
 from backend.app.builder2.cyclone_specialist import CycloneReliabilitySpecialist
 from backend.app.builder2.monsoon_specialist import MonsoonReliabilitySpecialist
 from backend.app.builder2.western_disturbance_specialist import WesternDisturbanceReliabilitySpecialist
+from backend.app.builder2.heatwave_specialist import HeatwaveReliabilitySpecialist
 from backend.app.contracts.precipitation_contract import PrecipitationIssueFeatures
 from backend.app.contracts.cyclone_contract import CycloneBasin, CycloneIssueFeatures
 from backend.app.contracts.monsoon_contract import (
@@ -27,6 +28,11 @@ from backend.app.contracts.western_disturbance_contract import (
     WDIntensityClass,
     WDTerrainRegime,
     WDTroughTilt,
+)
+from backend.app.contracts.heatwave_contract import (
+    HeatwaveIssueFeatures,
+    HeatwaveRegime,
+    HeatwaveSeverity,
 )
 from backend.app.schemas.reliability_state import (
     DecisionMode,
@@ -525,3 +531,138 @@ def test_wd_to_reliability_state_integration(wd_specialist, nominal_wd_features)
 
     assert state.decision_mode == DecisionMode.NOMINAL
     assert state.reliability_state == OperationalReliabilityState.STABLE
+
+
+# ==============================================================================
+# HEATWAVE AND SEVERE-WIND RELIABILITY SPECIALIST TESTS (GATE 7 / P1 + P2)
+# ==============================================================================
+
+@pytest.fixture
+def hw_specialist():
+    return HeatwaveReliabilitySpecialist()
+
+
+@pytest.fixture
+def nominal_hw_features():
+    return HeatwaveIssueFeatures(
+        lead_hours=48,
+        regime=HeatwaveRegime.CORE_HEATWAVE_ZONE,
+        severity=HeatwaveSeverity.SEVERE_HEATWAVE,
+        forecast_lat=25.5,
+        forecast_lon=82.0,
+        forecast_tmax_celsius=45.5,
+        forecast_tmin_celsius=31.5,
+        climatological_normal_tmax_celsius=39.0,
+        departure_tmax_celsius=6.5,
+        ensemble_tmax_spread_celsius=2.8,
+        ensemble_tmin_spread_celsius=1.6,
+        soil_moisture_fraction=0.08,
+        temp_advection_850hpa_k_s=2.5e-5,
+        forecast_duration_days=6.0,
+        wind_gust_10m_ms=18.5,
+        ensemble_gust_spread_ms=3.2,
+        has_paired_wind_data=True,
+    )
+
+
+def test_heatwave_baselines(hw_specialist):
+    """Test Level 1, 2, 3 Heatwave baselines."""
+    p_clim = hw_specialist.evaluate_climatology_baseline(
+        regime=HeatwaveRegime.CORE_HEATWAVE_ZONE, lead_hours=48
+    )
+    assert 0.05 < p_clim < 0.50
+
+    p_raw_low = hw_specialist.evaluate_raw_ensemble_baseline(tmax_spread_celsius=1.2, lead_hours=48)
+    p_raw_high = hw_specialist.evaluate_raw_ensemble_baseline(tmax_spread_celsius=4.5, lead_hours=48)
+    assert p_raw_high > p_raw_low
+
+    p_log = hw_specialist.evaluate_spread_logistic_baseline(tmax_spread_celsius=2.5, lead_hours=48)
+    assert 0.01 < p_log < 0.99
+
+
+def test_heatwave_decomposed_failure_modes(hw_specialist, nominal_hw_features):
+    """Verify separate evaluation of threshold, peak, onset, duration, warm night, spatial, and wind."""
+    out = hw_specialist.predict(nominal_hw_features)
+    assert out.hazard == "HEATWAVE"
+
+    assert out.threshold_failure_probability is not None
+    assert out.peak_temperature_failure_probability is not None
+    assert out.onset_failure_probability is not None
+    assert out.duration_failure_probability is not None
+    assert out.warm_night_failure_probability is not None
+    assert out.spatial_extent_failure_probability is not None
+    assert out.severe_wind_failure_probability is not None
+
+    assert out.overall_reliability is not None
+    assert len(out.evidence) >= 5
+    assert out.ood is False
+
+
+def test_heatwave_severe_wind_null_safety(hw_specialist, nominal_hw_features):
+    """Verify severe wind failure probability is strictly null when paired data is absent."""
+    no_wind_features = nominal_hw_features.model_copy(
+        update={
+            "has_paired_wind_data": False,
+            "wind_gust_10m_ms": None,
+            "ensemble_gust_spread_ms": None,
+        }
+    )
+    out = hw_specialist.predict(no_wind_features)
+    assert out.severe_wind_failure_probability is None
+
+    # Evidence confirms null safety
+    assert any("Severe wind module: null" in e for e in out.evidence)
+
+
+def test_heatwave_regional_conditioning(hw_specialist, nominal_hw_features):
+    """Verify regional conditioning: Core zone with dry soil has higher peak temperature bust risk."""
+    out_core = hw_specialist.predict(nominal_hw_features)
+
+    coastal_features = nominal_hw_features.model_copy(
+        update={"regime": HeatwaveRegime.COASTAL_PENINSULAR, "soil_moisture_fraction": 0.35}
+    )
+    out_coastal = hw_specialist.predict(coastal_features)
+
+    assert out_core.peak_temperature_failure_probability > out_coastal.peak_temperature_failure_probability
+
+
+def test_heatwave_ood_and_abstention(hw_specialist, nominal_hw_features):
+    """Verify OOD detection and abstention under extreme thermal anomaly and spread."""
+    ood_features = nominal_hw_features.model_copy(
+        update={
+            "ensemble_tmax_spread_celsius": 8.5,       # Exceeds 6.0°C
+            "departure_tmax_celsius": 14.0,            # Exceeds 12.0°C
+            "soil_moisture_fraction": 0.005,           # Extreme depletion < 0.02
+        }
+    )
+    out = hw_specialist.predict(ood_features)
+    assert out.ood is True
+
+    state = hw_specialist.to_reliability_state(ood_features)
+    assert state.abstention_state is True
+    assert state.decision_mode == DecisionMode.ABSTAIN_UNSUPPORTED
+    assert state.reliability_state == OperationalReliabilityState.ABSTAIN
+    assert state.bust_probability is None
+
+
+def test_heatwave_to_reliability_state_integration(hw_specialist, nominal_hw_features):
+    """Verify universal ReliabilityState generation for Heatwave."""
+    state = hw_specialist.to_reliability_state(
+        nominal_hw_features,
+        forecast_id="FCST-TEST-HW-COREZONE",
+        location="NORTH_CENTRAL_PLAINS",
+    )
+    assert isinstance(state, ReliabilityState)
+    assert state.forecast_identity == "FCST-TEST-HW-COREZONE"
+    assert state.hazard_type == "HEATWAVE"
+    assert state.bust_probability is not None
+    assert len(state.hazard_curve) > 0
+    assert len(state.survival_curve) == len(state.hazard_curve)
+
+    # Invariant: Monotonic survival curve
+    for i in range(len(state.survival_curve) - 1):
+        assert state.survival_curve[i+1] <= state.survival_curve[i]
+
+    assert state.decision_mode == DecisionMode.NOMINAL
+    assert state.reliability_state == OperationalReliabilityState.STABLE
+
