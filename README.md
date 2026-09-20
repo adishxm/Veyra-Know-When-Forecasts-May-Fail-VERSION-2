@@ -24,6 +24,8 @@
 - [3. The 6 Certified Meteorological Hazard Specialists](#3-the-6-certified-meteorological-hazard-specialists)
 - [4. Architectural Roadmap: Gates 1 through 11 (Phases A–L)](#4-architectural-roadmap-gates-1-through-11-phases-al)
 - [5. End-to-End System Architecture](#5-end-to-end-system-architecture)
+  - [5.1 Operational Implementation Architecture](#51-operational-implementation-architecture)
+  - [5.2 Complete Scientific Workflow Architecture (as per Research)](#52-complete-scientific-workflow-architecture-as-per-research)
 - [6. Empirical Benchmark & Verification Results](#6-empirical-benchmark--verification-results)
 - [7. Reliability Digital Twin & Historical Replay](#7-reliability-digital-twin--historical-replay)
 - [8. Defensive Engineering & Safe Abstention Taxonomy](#8-defensive-engineering--safe-abstention-taxonomy)
@@ -144,6 +146,8 @@ Every capability in Veyra Sentinel has been implemented and audited against the 
 
 ## 5. End-to-End System Architecture
 
+### 5.1 Operational Implementation Architecture
+
 ```mermaid
 flowchart TB
     subgraph Ingestion ["1. Multi-NWP Ingestion & Quality Control"]
@@ -211,6 +215,135 @@ flowchart TB
     API --> DASH
     API --> CAP
 ```
+
+### 5.2 Complete Scientific Workflow Architecture (as per Research)
+
+```mermaid
+flowchart TD
+    %% =========================================================================
+    %% LAYER 1: UPSTREAM INGESTION & DATA INTEGRITY
+    %% =========================================================================
+    subgraph L1["Layer 1: Upstream Ingestion & Data Integrity (Protocol K1 / K2)"]
+        direction TB
+        RawNWP["Global Ensemble NWP Feed (GEFS / GFS, N=31 Members)"]
+        QC["Quality Control & Physical Sanity Checks (Range bounds, monotonic lead time, unit verification)"]
+        CacheCheck{"Upstream Ingestion Status?"}
+        FallbackCycle["Protocol K1: Fallback Reference Cycle (Cached / verified baseline, flags DATA_DELAYED)"]
+        EnsembleCheck{"Protocol K2: Member Count >= 10?"}
+        DegradedMode["Protocol K2: Degraded Ensemble Mode (Uncertainty inflation, DEGRADED_INCOMPLETE)"]
+        
+        RawNWP --> QC
+        QC --> CacheCheck
+        CacheCheck -- "Failure / Rate-Limited" --> FallbackCycle
+        CacheCheck -- "Success" --> EnsembleCheck
+        FallbackCycle --> EnsembleCheck
+        EnsembleCheck -- "Incomplete (10-30 Members)" --> DegradedMode
+    end
+
+    %% =========================================================================
+    %% LAYER 2: ISSUE-TIME FEATURE PIPELINE & ANTI-LEAKAGE
+    %% =========================================================================
+    subgraph L2["Layer 2: Issue-Time Feature Engineering & Anti-Leakage Boundary"]
+        direction TB
+        TimeGate["Temporal Safety Invariant (availability_time <= issue_time)"]
+        EnsembleGeom["Ensemble Geometry & Dispersion (Mean, std, IQR, skewness, spread-growth, tail spreads)"]
+        CycleTraj["Multi-Cycle Revision Trajectory (6h / 12h / 24h run-to-run deltas, acceleration, oscillation)"]
+        SynopticContext["Synoptic & Geographic Context (Diurnal cycles, seasonal harmonics, topography, surface variables)"]
+        AntiLeakageGuard["Anti-Leakage Guard (Ground truth strictly sealed; ERA5/IMD never used as predictors)"]
+
+        TimeGate --> EnsembleGeom
+        TimeGate --> CycleTraj
+        TimeGate --> SynopticContext
+        EnsembleGeom & CycleTraj & SynopticContext --> AntiLeakageGuard
+    end
+
+    %% =========================================================================
+    %% LAYER 3: SCOPE VALIDATION & OOD SAFE ABSTENTION
+    %% =========================================================================
+    subgraph L3["Layer 3: Scope Enforcement & Out-of-Distribution Gating"]
+        direction TB
+        ScopeVal{"Scope Validation (Certified India domain & lead <= 240h?)"}
+        OODGating{"OOD Novelty Detector (Mahalanobis / Feature-space distance threshold)"}
+        SafeAbstain["Protocol K4 Safe Abstention (p_bust = null, trust_state = ABSTAINED, reason_codes logged)"]
+
+        ScopeVal -- "Out-of-Scope (Foreign / Polar / Lead > 240h)" --> SafeAbstain
+        ScopeVal -- "Certified Scope" --> OODGating
+        OODGating -- "Extreme Atmospheric OOD" --> SafeAbstain
+    end
+
+    %% =========================================================================
+    %% LAYER 4: CALIBRATED ML ENGINE & BASELINE LADDER
+    %% =========================================================================
+    subgraph L4["Layer 4: Calibrated ML Engine & Baseline Ladder"]
+        direction TB
+        BaselineLadder["Baseline Comparison Ladder: E0 Climatology | E1 Persistence | E2 Spread-Only | E3 Logistic"]
+        PrimaryML["Primary ML Model: Gradient Boosted Trees (LightGBM / XGBoost)"]
+        ModelHealth{"Primary Model Ready & Healthy?"}
+        SpreadFallback["Protocol K3: Calibrated Spread-Only Logistic Fallback"]
+        ConformalCalib["Post-Hoc Probability Calibration & Conformal Interval Engine (Isotonic / Platt ECE tuning, 90% coverage bands)"]
+
+        ModelHealth -- "Unavailable" --> SpreadFallback
+        ModelHealth -- "Ready" --> PrimaryML
+        SpreadFallback --> ConformalCalib
+        PrimaryML --> ConformalCalib
+        BaselineLadder -. "Benchmarked against" .-> PrimaryML
+    end
+
+    %% =========================================================================
+    %% LAYER 5: PHYSICAL ATTRIBUTION & EVIDENCE SYNTHESIS
+    %% =========================================================================
+    subgraph L5["Layer 5: Decision Intelligence, Physical Attribution & Analogs"]
+        direction TB
+        TreeSHAP["TreeSHAP Explainability (Dominant physical risk drivers, synoptic factor importance)"]
+        SpatialRisk["Spatial Risk Extent Engine (Connected component analysis, risk area fraction, centroid error)"]
+        AnalogEngine["Historical Analog Engine (k-NN similarity matching against verified past bust/normal episodes)"]
+        TTFF["Time-to-First-Failure TTFF (Earliest lead hour crossing high-risk decision threshold)"]
+
+        TreeSHAP --> EvidenceAssembly["Evidence Pack Assembly"]
+        SpatialRisk --> EvidenceAssembly
+        AnalogEngine --> EvidenceAssembly
+        TTFF --> EvidenceAssembly
+    end
+
+    %% =========================================================================
+    %% LAYER 6: OPERATIONAL DISSEMINATION & HUMAN-IN-THE-LOOP
+    %% =========================================================================
+    subgraph L6["Layer 6: Operational Dissemination & Human-in-the-Loop Review"]
+        direction TB
+        RiskBanding["Color Risk Banding (Green: Nominal | Yellow: Elevated | Orange: High | Red: Critical | Gray: Abstained)"]
+        DecisionGuidance["Operational Decision Mode (STANDARD_MONITORING | ELEVATED_RISK | ACTIVE_ALERT | ABSTAINED)"]
+        HumanReview{"Protocol A2: Human-in-the-Loop Gate (Operational Meteorologist Validation)"}
+        DisasterResponse["Contingency Preparation & Target Emergency Dissemination"]
+        StandardMonitoring["Standard Monitoring & Next-Cycle Replay Tracking"]
+        AuditLedger["Cryptographic Audit Ledger & Drift Monitoring (Request ID, latency, feature drift, shadow scoring)"]
+
+        RiskBanding --> DecisionGuidance
+        DecisionGuidance --> HumanReview
+        HumanReview -- "High / Critical Risk Confirmed" --> DisasterResponse
+        HumanReview -- "Nominal / Low Risk" --> StandardMonitoring
+        HumanReview --> AuditLedger
+    end
+
+    %% =========================================================================
+    %% CROSS-LAYER FLOWS
+    %% =========================================================================
+    EnsembleCheck -- "Nominal (31 Members)" --> TimeGate
+    DegradedMode --> TimeGate
+    AntiLeakageGuard --> ScopeVal
+    OODGating -- "Nominal Atmospheric Support" --> ModelHealth
+    ConformalCalib --> TreeSHAP & SpatialRisk & AnalogEngine & TTFF
+    SafeAbstain --> RiskBanding
+    EvidenceAssembly --> RiskBanding
+```
+
+| Layer | Scientific Role | Key Protocols Enforced |
+| :--- | :--- | :--- |
+| **Layer 1: Upstream Ingestion & Data Integrity** | Ingests 31-member GEFS/GFS ensemble weather forecasts and runs real-time Quality Control (QC). | **Protocol K1** (Fallback to verified cached cycle flagged as `DATA_DELAYED` if upstream is rate-limited/offline) & **Protocol K2** (Degraded operation if ensemble members are incomplete; safe abstention if < 10 members). |
+| **Layer 2: Issue-Time Feature Extraction** | Constructs multi-moment statistical features (ensemble mean, spread, skewness, spread-growth rate, and 6h/12h/24h run-to-run cycle deltas). | **Anti-Leakage Invariant**: Strict verification that `availability_time <= issue_time`. Ground truth (ERA5 / IMD observations) is cryptographically sealed and never used as a predictor. |
+| **Layer 3: Scope Validation & OOD Gating** | Enforces certified geographic boundaries (India stations and lead times $\le$ 240h) and evaluates statistical feature distance. | **Protocol K4**: If input is uncertified (e.g., polar/ocean) or extreme out-of-distribution, system safely abstains (`bust_probability = null`, `ABSTAINED`) instead of hallucinating. |
+| **Layer 4: Calibrated ML Engine & Baseline Ladder** | Executes calibrated gradient-boosted decision trees (LightGBM/XGBoost) evaluated against Climatology (E0), Persistence (E1), and Spread-Only (E2). | **Protocol K3**: If primary model is unavailable, automatically falls back to the calibrated spread-only logistic baseline. Applies post-hoc isotonic calibration and 90% conformal coverage intervals. |
+| **Layer 5: Physical Attribution & Analogs** | Computes TreeSHAP synoptic risk drivers, connected-component spatial risk boundaries, Time-to-First-Failure (TTFF), and historical analog retrieval. | Provides explainable evidence cards and matches current conditions with historical meteorological bust/normal episodes without temporal leakage. |
+| **Layer 6: Operational Dissemination & Human-in-the-Loop** | Maps probabilities to 5-tier color bands (Green, Yellow, Orange, Red, Gray) and issues standardized decision guidance. | **Protocol A2**: Meteorologist-in-the-loop review gate prevents autonomous emergency actions; records every transaction to an immutable audit ledger with drift tracking. |
 
 ---
 
