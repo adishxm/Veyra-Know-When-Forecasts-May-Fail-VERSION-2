@@ -14,12 +14,19 @@ import pytest
 from backend.app.builder2.precipitation_specialist import PrecipitationReliabilitySpecialist
 from backend.app.builder2.cyclone_specialist import CycloneReliabilitySpecialist
 from backend.app.builder2.monsoon_specialist import MonsoonReliabilitySpecialist
+from backend.app.builder2.western_disturbance_specialist import WesternDisturbanceReliabilitySpecialist
 from backend.app.contracts.precipitation_contract import PrecipitationIssueFeatures
 from backend.app.contracts.cyclone_contract import CycloneBasin, CycloneIssueFeatures
 from backend.app.contracts.monsoon_contract import (
     MonsoonIssueFeatures,
     MonsoonRegimeState,
     MonsoonSystemType,
+)
+from backend.app.contracts.western_disturbance_contract import (
+    WDIssueFeatures,
+    WDIntensityClass,
+    WDTerrainRegime,
+    WDTroughTilt,
 )
 from backend.app.schemas.reliability_state import (
     DecisionMode,
@@ -375,6 +382,139 @@ def test_monsoon_to_reliability_state_integration(monsoon_specialist, nominal_mo
     assert isinstance(state, ReliabilityState)
     assert state.forecast_identity == "FCST-TEST-MONSOON-BOB"
     assert state.hazard_type == "MONSOON_LPS"
+    assert state.bust_probability is not None
+    assert len(state.hazard_curve) > 0
+    assert len(state.survival_curve) == len(state.hazard_curve)
+
+    # Invariant: Monotonic survival curve
+    for i in range(len(state.survival_curve) - 1):
+        assert state.survival_curve[i+1] <= state.survival_curve[i]
+
+    assert state.decision_mode == DecisionMode.NOMINAL
+    assert state.reliability_state == OperationalReliabilityState.STABLE
+
+
+# ==============================================================================
+# WESTERN DISTURBANCE RELIABILITY SPECIALIST TESTS (GATE 6 / P1)
+# ==============================================================================
+
+@pytest.fixture
+def wd_specialist():
+    return WesternDisturbanceReliabilitySpecialist()
+
+
+@pytest.fixture
+def nominal_wd_features():
+    return WDIssueFeatures(
+        lead_hours=48,
+        intensity_class=WDIntensityClass.SEVERE_ACTIVE,
+        terrain_regime=WDTerrainRegime.HIMALAYAN_HIGH_ALTITUDE,
+        forecast_lat=34.1,
+        forecast_lon=74.8,
+        subtropical_jet_speed_ms=75.0,
+        jet_core_lat_displacement_deg=-1.5,
+        trough_depth_500hpa_gpm=5480.0,
+        trough_tilt=WDTroughTilt.NEGATIVE,
+        induced_low_present=True,
+        ensemble_trough_spread_km=65.0,
+        forecast_precip_max_24h_mm=85.0,
+        ensemble_precip_spread_mm=22.0,
+        forecast_duration_hours=48.0,
+        freezing_level_m=2400.0,
+        surface_temp_celsius=1.2,
+        has_high_altitude_obs=True,
+    )
+
+
+def test_wd_baselines(wd_specialist):
+    """Test Level 1, 2, 3 Western Disturbance baselines."""
+    p_clim = wd_specialist.evaluate_climatology_baseline(
+        terrain_regime=WDTerrainRegime.HIMALAYAN_HIGH_ALTITUDE, lead_hours=48
+    )
+    assert 0.05 < p_clim < 0.50
+
+    p_raw_low = wd_specialist.evaluate_raw_ensemble_baseline(trough_spread_km=50.0, lead_hours=48)
+    p_raw_high = wd_specialist.evaluate_raw_ensemble_baseline(trough_spread_km=210.0, lead_hours=48)
+    assert p_raw_high > p_raw_low
+
+    p_log = wd_specialist.evaluate_spread_logistic_baseline(trough_spread_km=80.0, lead_hours=48)
+    assert 0.01 < p_log < 0.99
+
+
+def test_wd_decomposed_failure_modes(wd_specialist, nominal_wd_features):
+    """Verify separate evaluation of arrival, location, precip, displacement, duration, and rain/snow."""
+    out = wd_specialist.predict(nominal_wd_features)
+    assert out.hazard == "WESTERN_DISTURBANCE"
+
+    assert out.arrival_failure_probability is not None
+    assert out.track_location_failure_probability is not None
+    assert out.precipitation_amount_failure_probability is not None
+    assert out.precipitation_displacement_failure_probability is not None
+    assert out.duration_failure_probability is not None
+    assert out.rain_snow_partition_failure_probability is not None
+
+    assert out.overall_reliability is not None
+    assert len(out.evidence) >= 5
+    assert out.ood is False
+
+
+def test_wd_rain_snow_null_safety(wd_specialist, nominal_wd_features):
+    """Verify rain/snow partition is strictly null when observations are unsupported."""
+    no_obs_features = nominal_wd_features.model_copy(
+        update={
+            "has_high_altitude_obs": False,
+            "freezing_level_m": None,
+            "surface_temp_celsius": None,
+        }
+    )
+    out = wd_specialist.predict(no_obs_features)
+    assert out.rain_snow_partition_failure_probability is None
+
+    # Evidence confirms null safety
+    assert any("Rain/snow partition: null" in e for e in out.evidence)
+
+
+def test_wd_terrain_conditioning(wd_specialist, nominal_wd_features):
+    """Verify terrain conditioning: Himalayan high altitude has higher orographic precip bust risk."""
+    out_himalayan = wd_specialist.predict(nominal_wd_features)
+
+    plains_features = nominal_wd_features.model_copy(
+        update={"terrain_regime": WDTerrainRegime.INDO_GANGETIC_PLAINS}
+    )
+    out_plains = wd_specialist.predict(plains_features)
+
+    assert out_himalayan.precipitation_amount_failure_probability > out_plains.precipitation_amount_failure_probability
+
+
+def test_wd_ood_and_abstention(wd_specialist, nominal_wd_features):
+    """Verify OOD detection and abstention under extreme jet speed and trough spread."""
+    ood_features = nominal_wd_features.model_copy(
+        update={
+            "ensemble_trough_spread_km": 320.0,       # Exceeds 280 km
+            "subtropical_jet_speed_ms": 105.0,        # Exceeds 95 m/s
+            "trough_depth_500hpa_gpm": 5150.0,        # Polar intrusion < 5250 gpm
+        }
+    )
+    out = wd_specialist.predict(ood_features)
+    assert out.ood is True
+
+    state = wd_specialist.to_reliability_state(ood_features)
+    assert state.abstention_state is True
+    assert state.decision_mode == DecisionMode.ABSTAIN_UNSUPPORTED
+    assert state.reliability_state == OperationalReliabilityState.ABSTAIN
+    assert state.bust_probability is None
+
+
+def test_wd_to_reliability_state_integration(wd_specialist, nominal_wd_features):
+    """Verify universal ReliabilityState generation for Western Disturbance."""
+    state = wd_specialist.to_reliability_state(
+        nominal_wd_features,
+        forecast_id="FCST-TEST-WD-HIMALAYA",
+        location="WESTERN_HIMALAYAS_SRINAGAR",
+    )
+    assert isinstance(state, ReliabilityState)
+    assert state.forecast_identity == "FCST-TEST-WD-HIMALAYA"
+    assert state.hazard_type == "WESTERN_DISTURBANCE"
     assert state.bust_probability is not None
     assert len(state.hazard_curve) > 0
     assert len(state.survival_curve) == len(state.hazard_curve)
