@@ -12,7 +12,9 @@ Verifies:
 import pytest
 
 from backend.app.builder2.precipitation_specialist import PrecipitationReliabilitySpecialist
+from backend.app.builder2.cyclone_specialist import CycloneReliabilitySpecialist
 from backend.app.contracts.precipitation_contract import PrecipitationIssueFeatures
+from backend.app.contracts.cyclone_contract import CycloneBasin, CycloneIssueFeatures
 from backend.app.schemas.reliability_state import (
     DecisionMode,
     OperationalReliabilityState,
@@ -140,6 +142,116 @@ def test_to_reliability_state_integration(specialist, nominal_features):
     assert len(state.survival_curve) == len(state.hazard_curve)
 
     # Invariant: Survival curve must be monotonically non-increasing
+    for i in range(len(state.survival_curve) - 1):
+        assert state.survival_curve[i+1] <= state.survival_curve[i]
+
+    assert state.decision_mode == DecisionMode.NOMINAL
+    assert state.reliability_state == OperationalReliabilityState.STABLE
+
+
+# ==============================================================================
+# Tropical Cyclone Reliability Specialist Tests (Gate 4 / Phase E)
+# ==============================================================================
+
+@pytest.fixture
+def cyclone_specialist():
+    return CycloneReliabilitySpecialist()
+
+
+@pytest.fixture
+def nominal_cyclone_landfall_features():
+    return CycloneIssueFeatures(
+        lead_hours=48,
+        basin=CycloneBasin.BAY_OF_BENGAL,
+        forecast_lat=18.5,
+        forecast_lon=86.2,
+        forward_speed_kmh=18.0,
+        ensemble_track_spread_km=85.0,
+        ensemble_track_clustering=0.25,
+        forecast_max_wind_ms=45.0,
+        ensemble_intensity_spread_ms=5.5,
+        vertical_wind_shear_ms=12.0,
+        steering_flow_speed_ms=6.5,
+        steering_flow_dir_deg=315.0,
+        central_pressure_tendency_hpa_12h=-10.0,
+        distance_to_coast_km=140.0,
+        forecast_landfall=True,
+        forecast_landfall_lead_hours=54,
+    )
+
+
+def test_cyclone_baselines(cyclone_specialist):
+    """Test Level 1, 2, 3 cyclone track baselines."""
+    p_clim = cyclone_specialist.evaluate_climatology_baseline(basin=CycloneBasin.BAY_OF_BENGAL, lead_hours=48)
+    assert 0.05 < p_clim < 0.50
+
+    p_raw_low = cyclone_specialist.evaluate_raw_ensemble_baseline(track_spread_km=40.0, lead_hours=48)
+    p_raw_high = cyclone_specialist.evaluate_raw_ensemble_baseline(track_spread_km=140.0, lead_hours=48)
+    assert p_raw_high > p_raw_low
+
+    p_log = cyclone_specialist.evaluate_spread_logistic_baseline(track_spread_km=85.0, lead_hours=48)
+    assert 0.01 < p_log < 0.99
+
+
+def test_cyclone_conformal_uncertainty(cyclone_specialist):
+    """Test Level 5: Conformal track uncertainty radius."""
+    r90 = cyclone_specialist.evaluate_conformal_track_radius(track_spread_km=85.0, lead_hours=48, target_coverage=0.90)
+    r80 = cyclone_specialist.evaluate_conformal_track_radius(track_spread_km=85.0, lead_hours=48, target_coverage=0.80)
+    assert r90 > r80 > 85.0
+
+
+def test_cyclone_landfall_vs_non_landfall_null_safety(cyclone_specialist, nominal_cyclone_landfall_features):
+    """Verify strict null-safety: landfall fields are present for landfall and None for offshore."""
+    # Landfall case
+    out_lf = cyclone_specialist.predict(nominal_cyclone_landfall_features)
+    assert out_lf.landfall_location_failure_probability is not None
+    assert out_lf.landfall_timing_failure_probability is not None
+
+    # Non-landfall offshore case
+    offshore_features = nominal_cyclone_landfall_features.model_copy(
+        update={"forecast_landfall": False, "distance_to_coast_km": 500.0}
+    )
+    out_offshore = cyclone_specialist.predict(offshore_features)
+    assert out_offshore.landfall_location_failure_probability is None
+    assert out_offshore.landfall_timing_failure_probability is None
+    # Track and intensity are still computed
+    assert out_offshore.track_failure_probability is not None
+    assert out_offshore.intensity_failure_probability is not None
+
+
+def test_cyclone_ood_and_abstention(cyclone_specialist, nominal_cyclone_landfall_features):
+    """Verify OOD detection and abstention state under extreme shear/spread."""
+    ood_features = nominal_cyclone_landfall_features.model_copy(
+        update={
+            "ensemble_track_spread_km": 350.0,  # Exceeds 280km
+            "vertical_wind_shear_ms": 52.0,     # Exceeds 45 m/s
+        }
+    )
+    out = cyclone_specialist.predict(ood_features)
+    assert out.ood is True
+
+    state = cyclone_specialist.to_reliability_state(ood_features)
+    assert state.abstention_state is True
+    assert state.decision_mode == DecisionMode.ABSTAIN_UNSUPPORTED
+    assert state.reliability_state == OperationalReliabilityState.ABSTAIN
+    assert state.bust_probability is None
+
+
+def test_cyclone_to_reliability_state_integration(cyclone_specialist, nominal_cyclone_landfall_features):
+    """Verify universal ReliabilityState generation for cyclone."""
+    state = cyclone_specialist.to_reliability_state(
+        nominal_cyclone_landfall_features,
+        forecast_id="FCST-TEST-FANI",
+        location="ODISHA_COAST",
+    )
+    assert isinstance(state, ReliabilityState)
+    assert state.forecast_identity == "FCST-TEST-FANI"
+    assert state.hazard_type == "CYCLONE"
+    assert state.bust_probability is not None
+    assert len(state.hazard_curve) > 0
+    assert len(state.survival_curve) == len(state.hazard_curve)
+
+    # Invariant: Monotonic survival curve
     for i in range(len(state.survival_curve) - 1):
         assert state.survival_curve[i+1] <= state.survival_curve[i]
 

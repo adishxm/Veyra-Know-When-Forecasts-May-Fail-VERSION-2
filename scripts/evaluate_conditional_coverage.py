@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate Conditional Coverage and Selective Prediction (Gate 3 / Phase D).
+"""Evaluate Conditional Coverage and Selective Prediction (Gate 3/4 / Phase D/E).
 
 Evaluates whether abstaining on unsupported/OOD states reduces residual forecast risk:
 - Computes Risk-Coverage trade-off curves (coverage -> residual Brier / MAE).
@@ -20,21 +20,21 @@ if str(REPO_ROOT) not in sys.path:
 
 from backend.app.builder2.precipitation_specialist import PrecipitationReliabilitySpecialist
 from backend.app.contracts.precipitation_contract import PrecipitationIssueFeatures
+from backend.app.builder2.cyclone_specialist import CycloneReliabilitySpecialist
+from backend.app.contracts.cyclone_contract import CycloneBasin, CycloneIssueFeatures
 
 
-def generate_coverage_evaluation_dataset(n_samples: int = 500, random_seed: int = 42) -> List[Dict[str, Any]]:
-    """Generate dataset containing both in-distribution and high-uncertainty OOD cases."""
+def generate_precip_coverage_dataset(n_samples: int = 500, random_seed: int = 42) -> List[Dict[str, Any]]:
+    """Generate precipitation dataset with nominal and extreme OOD cases."""
     rng = np.random.RandomState(random_seed)
     dataset = []
 
     for idx in range(n_samples):
-        # 15% probability of extreme / OOD atmospheric state
-        is_extreme_cycle = (rng.uniform() < 0.15)
-        
-        if is_extreme_cycle:
-            spread = float(rng.uniform(82.0, 120.0))  # OOD spread
-            pwat = float(rng.uniform(86.0, 98.0))     # OOD pwat
-            cape = float(rng.uniform(4600.0, 5500.0)) # OOD cape
+        is_extreme = (rng.uniform() < 0.15)
+        if is_extreme:
+            spread = float(rng.uniform(82.0, 120.0))
+            pwat = float(rng.uniform(86.0, 98.0))
+            cape = float(rng.uniform(4600.0, 5500.0))
             mean_precip = float(rng.uniform(40.0, 150.0))
         else:
             spread = float(rng.uniform(3.0, 45.0))
@@ -47,7 +47,6 @@ def generate_coverage_evaluation_dataset(n_samples: int = 500, random_seed: int 
         wet_frac = float(np.clip(mean_precip / 35.0, 0.1, 0.9))
         dry_frac = 1.0 - wet_frac
 
-        # True observation
         obs = max(0.0, mean_precip + rng.normal(0.0, spread * 0.85))
         bust_label = 1 if abs(mean_precip - obs) > 25.0 else 0
 
@@ -65,11 +64,57 @@ def generate_coverage_evaluation_dataset(n_samples: int = 500, random_seed: int 
         )
 
         dataset.append({
-            "idx": idx,
-            "cycle_id": f"cycle_{idx // 25:02d}",
             "features": features,
             "bust_label": bust_label,
-            "is_extreme": is_extreme_cycle,
+            "is_extreme": is_extreme,
+        })
+
+    return dataset
+
+
+def generate_cyclone_coverage_dataset(n_samples: int = 300, random_seed: int = 42) -> List[Dict[str, Any]]:
+    """Generate cyclone dataset with nominal and extreme OOD cases."""
+    rng = np.random.RandomState(random_seed)
+    dataset = []
+
+    for idx in range(n_samples):
+        is_extreme = (rng.uniform() < 0.15)
+        lead = int(rng.choice([24, 48, 72, 96, 120]))
+
+        if is_extreme:
+            track_spread = float(rng.uniform(285.0, 380.0))  # OOD track spread
+            shear = float(rng.uniform(46.0, 58.0))           # OOD shear
+            speed = float(rng.uniform(56.0, 75.0))           # OOD speed
+        else:
+            track_spread = float(rng.uniform(30.0 + 0.5 * lead, 90.0 + 0.8 * lead))
+            shear = float(rng.uniform(8.0, 28.0))
+            speed = float(rng.uniform(12.0, 26.0))
+
+        basin = CycloneBasin.BAY_OF_BENGAL if rng.uniform() < 0.70 else CycloneBasin.ARABIAN_SEA
+        int_spread = float(rng.uniform(3.0, 8.0))
+
+        thresh_track = 60.0 if lead <= 24 else (100.0 if lead <= 48 else 180.0)
+        true_track_error = float(max(0.0, rng.normal(0.6 * track_spread, 0.45 * track_spread)))
+        track_bust = 1 if true_track_error > thresh_track else 0
+
+        features = CycloneIssueFeatures(
+            lead_hours=lead,
+            basin=basin,
+            forecast_lat=round(float(rng.uniform(12.0, 20.0)), 2),
+            forecast_lon=round(float(rng.uniform(84.0, 90.0)), 2) if basin == CycloneBasin.BAY_OF_BENGAL else round(float(rng.uniform(64.0, 70.0)), 2),
+            forward_speed_kmh=round(speed, 1),
+            ensemble_track_spread_km=round(track_spread, 1),
+            forecast_max_wind_ms=round(float(rng.uniform(25.0, 55.0)), 1),
+            ensemble_intensity_spread_ms=round(int_spread, 1),
+            vertical_wind_shear_ms=round(shear, 1),
+            forecast_landfall=True,
+            distance_to_coast_km=round(float(rng.uniform(50.0, 300.0)), 1),
+        )
+
+        dataset.append({
+            "features": features,
+            "bust_label": track_bust,
+            "is_extreme": is_extreme,
         })
 
     return dataset
@@ -77,20 +122,24 @@ def generate_coverage_evaluation_dataset(n_samples: int = 500, random_seed: int 
 
 def evaluate_risk_coverage_curve(
     dataset: List[Dict[str, Any]],
-    specialist: PrecipitationReliabilitySpecialist,
+    specialist: Any,
+    hazard: str = "precipitation",
 ) -> List[Dict[str, Any]]:
     """Evaluate residual Brier score and accuracy at descending coverage tiers."""
     scored_samples = []
     for d in dataset:
         out = specialist.predict(d["features"])
         ood_score = float(out.provenance.get("ood_score", 0.0))
-        p_fail = out.amount_failure_probability or 0.20
+        if hazard == "cyclone":
+            p_fail = out.track_failure_probability or 0.20
+        else:
+            p_fail = out.amount_failure_probability or 0.20
+
         scored_samples.append({
             "label": d["bust_label"],
             "pred_prob": p_fail,
             "ood_score": ood_score,
             "is_ood": out.ood,
-            "cycle_id": d["cycle_id"],
         })
 
     # Sort samples by confidence (lowest OOD score first = most reliable)
@@ -122,19 +171,23 @@ def evaluate_risk_coverage_curve(
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate Conditional Coverage and Selective Prediction")
-    parser.add_argument("--hazard", type=str, default="precipitation", help="Hazard family")
+    parser.add_argument("--hazard", type=str, default="precipitation", help="Hazard family ('precipitation', 'cyclone')")
     parser.add_argument("--bootstrap", type=str, default="cycle", help="Bootstrap mode: 'cycle', 'none'")
     args = parser.parse_args()
 
     print("================================================================================")
-    print(f" CONDITIONAL COVERAGE & SELECTIVE PREDICTION: {args.hazard.upper()} (GATE 3)")
+    print(f" CONDITIONAL COVERAGE & SELECTIVE PREDICTION: {args.hazard.upper()}")
     print(f" Bootstrap Mode: {args.bootstrap.upper()}")
     print("================================================================================")
 
-    specialist = PrecipitationReliabilitySpecialist()
-    dataset = generate_coverage_evaluation_dataset(n_samples=500)
+    if args.hazard.lower() == "cyclone":
+        specialist = CycloneReliabilitySpecialist()
+        dataset = generate_cyclone_coverage_dataset(n_samples=300)
+    else:
+        specialist = PrecipitationReliabilitySpecialist()
+        dataset = generate_precip_coverage_dataset(n_samples=500)
 
-    results = evaluate_risk_coverage_curve(dataset, specialist)
+    results = evaluate_risk_coverage_curve(dataset, specialist, hazard=args.hazard.lower())
 
     print("\n--- RISK-COVERAGE TRADE-OFF CURVE ---")
     print(f"{'Coverage':<10} | {'Retained':<10} | {'Residual Brier':<15} | {'Residual MAE':<15} | {'Max OOD Score':<15}")
@@ -153,7 +206,7 @@ def main():
     print(f"Residual Risk Reduction via Abstention: +{risk_reduction_pct:.2f}%")
 
     assert brier_selective <= brier_full, "Selective coverage must reduce or maintain residual Brier error"
-    print("[PASS] Gate 3 Abstention Policy: Abstaining on unsupported OOD states strictly reduces residual risk.")
+    print(f"[PASS] Gate Abstention Policy: Abstaining on unsupported OOD states strictly reduces residual risk for {args.hazard.upper()}.")
     print("================================================================================")
     sys.exit(0)
 
