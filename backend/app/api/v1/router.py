@@ -15,6 +15,7 @@ from backend.app.api.v1.endpoints import (
     provenance,
     risk_map,
     explanation,
+    hazard,
     review,
 )
 
@@ -95,4 +96,9 @@ api_router.include_router(
 api_router.include_router(
     review.router,
     tags=["Human-in-the-Loop Review"],
+)
+
+api_router.include_router(
+    hazard.router,
+    tags=["Hazard Dynamics & Motifs"],
 )
