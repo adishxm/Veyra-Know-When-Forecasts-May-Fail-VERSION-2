@@ -36,11 +36,6 @@ echo.
 echo  +-----------------------------------------------------------------+
 echo  ^|                                                                 ^|
 echo  ^|   VEYRA SENTINEL is now running!                                ^|
-echo  ^|                                                                 ^|
-echo  ^|   Backend:    http://127.0.0.1:8000                             ^|
-echo  ^|   Frontend:   http://127.0.0.1:5173                             ^|
-echo  ^|   API Docs:   http://127.0.0.1:8000/docs                        ^|
-echo  ^|                                                                 ^|
 echo  ^|   Press any key in this window to stop all servers...           ^|
 echo  ^|                                                                 ^|
 echo  +-----------------------------------------------------------------+
