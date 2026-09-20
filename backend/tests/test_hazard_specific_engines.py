@@ -13,8 +13,14 @@ import pytest
 
 from backend.app.builder2.precipitation_specialist import PrecipitationReliabilitySpecialist
 from backend.app.builder2.cyclone_specialist import CycloneReliabilitySpecialist
+from backend.app.builder2.monsoon_specialist import MonsoonReliabilitySpecialist
 from backend.app.contracts.precipitation_contract import PrecipitationIssueFeatures
 from backend.app.contracts.cyclone_contract import CycloneBasin, CycloneIssueFeatures
+from backend.app.contracts.monsoon_contract import (
+    MonsoonIssueFeatures,
+    MonsoonRegimeState,
+    MonsoonSystemType,
+)
 from backend.app.schemas.reliability_state import (
     DecisionMode,
     OperationalReliabilityState,
@@ -247,6 +253,128 @@ def test_cyclone_to_reliability_state_integration(cyclone_specialist, nominal_cy
     assert isinstance(state, ReliabilityState)
     assert state.forecast_identity == "FCST-TEST-FANI"
     assert state.hazard_type == "CYCLONE"
+    assert state.bust_probability is not None
+    assert len(state.hazard_curve) > 0
+    assert len(state.survival_curve) == len(state.hazard_curve)
+
+    # Invariant: Monotonic survival curve
+    for i in range(len(state.survival_curve) - 1):
+        assert state.survival_curve[i+1] <= state.survival_curve[i]
+
+    assert state.decision_mode == DecisionMode.NOMINAL
+    assert state.reliability_state == OperationalReliabilityState.STABLE
+
+
+# ==============================================================================
+# Monsoon and LPS Reliability Specialist Tests (Gate 5 / Phase F)
+# ==============================================================================
+
+@pytest.fixture
+def monsoon_specialist():
+    return MonsoonReliabilitySpecialist()
+
+
+@pytest.fixture
+def nominal_monsoon_features():
+    return MonsoonIssueFeatures(
+        lead_hours=48,
+        system_type=MonsoonSystemType.MONSOON_DEPRESSION,
+        regime_state=MonsoonRegimeState.ACTIVE_MONSOON,
+        forecast_lat=21.2,
+        forecast_lon=85.8,
+        central_pressure_hpa=992.0,
+        pressure_tendency_hpa_24h=-5.0,
+        forward_speed_kmh=16.0,
+        ensemble_track_spread_km=90.0,
+        vorticity_850hpa_s=1.4e-4,
+        vertical_wind_shear_ms=14.0,
+        moisture_flux_transport_kg_ms=580.0,
+        forecast_rainfall_max_24h_mm=135.0,
+        ensemble_rainfall_spread_mm=38.0,
+        monsoon_trough_displacement_km=-35.0,
+        offshore_trough_present=True,
+    )
+
+
+def test_monsoon_baselines(monsoon_specialist):
+    """Test Level 1, 2, 3 monsoon baselines."""
+    p_clim = monsoon_specialist.evaluate_climatology_baseline(
+        regime_state=MonsoonRegimeState.ACTIVE_MONSOON, lead_hours=48
+    )
+    assert 0.05 < p_clim < 0.50
+
+    p_raw_low = monsoon_specialist.evaluate_raw_ensemble_baseline(track_spread_km=60.0, lead_hours=48)
+    p_raw_high = monsoon_specialist.evaluate_raw_ensemble_baseline(track_spread_km=220.0, lead_hours=48)
+    assert p_raw_high > p_raw_low
+
+    p_log = monsoon_specialist.evaluate_spread_logistic_baseline(track_spread_km=90.0, lead_hours=48)
+    assert 0.01 < p_log < 0.99
+
+
+def test_monsoon_three_pillar_decomposition(monsoon_specialist, nominal_monsoon_features):
+    """Verify separate evaluation of system dynamics, precipitation, and regime transitions."""
+    out = monsoon_specialist.predict(nominal_monsoon_features)
+    assert out.hazard == "MONSOON_LPS"
+
+    # Pillar 1: System Dynamics
+    assert out.system_location_failure_probability is not None
+    assert out.propagation_speed_failure_probability is not None
+    assert out.deepening_failure_probability is not None
+
+    # Pillar 2: Precipitation
+    assert out.rainfall_placement_failure_probability is not None
+    assert out.rainfall_intensity_failure_probability is not None
+
+    # Pillar 3: Regime Transition
+    assert out.regime_transition_failure_probability is not None
+
+    # Overall and evidence
+    assert out.overall_reliability is not None
+    assert len(out.evidence) >= 4
+    assert out.ood is False
+
+
+def test_monsoon_regime_states(monsoon_specialist, nominal_monsoon_features):
+    """Verify regime sensitivity: transition states have higher regime transition risk."""
+    out_active = monsoon_specialist.predict(nominal_monsoon_features)
+
+    trans_features = nominal_monsoon_features.model_copy(
+        update={"regime_state": MonsoonRegimeState.TRANSITION_TO_BREAK}
+    )
+    out_trans = monsoon_specialist.predict(trans_features)
+
+    assert out_trans.regime_transition_failure_probability > out_active.regime_transition_failure_probability
+
+
+def test_monsoon_ood_and_abstention(monsoon_specialist, nominal_monsoon_features):
+    """Verify OOD detection and abstention under extreme moisture transport and track spread."""
+    ood_features = nominal_monsoon_features.model_copy(
+        update={
+            "ensemble_track_spread_km": 380.0,            # Exceeds 300 km
+            "vertical_wind_shear_ms": 55.0,               # Exceeds 50 m/s
+            "moisture_flux_transport_kg_ms": 1800.0,      # Exceeds 1600 kg/(m*s)
+        }
+    )
+    out = monsoon_specialist.predict(ood_features)
+    assert out.ood is True
+
+    state = monsoon_specialist.to_reliability_state(ood_features)
+    assert state.abstention_state is True
+    assert state.decision_mode == DecisionMode.ABSTAIN_UNSUPPORTED
+    assert state.reliability_state == OperationalReliabilityState.ABSTAIN
+    assert state.bust_probability is None
+
+
+def test_monsoon_to_reliability_state_integration(monsoon_specialist, nominal_monsoon_features):
+    """Verify universal ReliabilityState generation for Monsoon and LPS."""
+    state = monsoon_specialist.to_reliability_state(
+        nominal_monsoon_features,
+        forecast_id="FCST-TEST-MONSOON-BOB",
+        location="CENTRAL_INDIA_TROUGH",
+    )
+    assert isinstance(state, ReliabilityState)
+    assert state.forecast_identity == "FCST-TEST-MONSOON-BOB"
+    assert state.hazard_type == "MONSOON_LPS"
     assert state.bust_probability is not None
     assert len(state.hazard_curve) > 0
     assert len(state.survival_curve) == len(state.hazard_curve)
