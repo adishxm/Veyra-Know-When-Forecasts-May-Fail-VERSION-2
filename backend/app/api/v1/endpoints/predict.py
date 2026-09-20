@@ -48,12 +48,17 @@ def create_forecast_bust_agent(
     else:
         feature_svc = LiveFeatureService()
 
+    from backend.app.services.fallback_service import ForecastFallbackService
+
     return ForecastBustAgent(
         weather_service=OpenMeteoGEFSWeatherService(),
         feature_service=feature_svc,
         model_service=model_svc,
         safety_evaluator=SafetyEvaluator(),
         explainability_service=expl_svc,
+        fallback_service=ForecastFallbackService(
+            enable_fallback_cache=getattr(settings, "WEATHER_FALLBACK_CACHE_ENABLED", True)
+        ),
     )
 
 

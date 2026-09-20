@@ -89,7 +89,7 @@ class ForecastBustAgent:
         self.ood_enforcer = ood_enforcer or default_ood_enforcer
         self.scope_enforcer = scope_enforcer or default_scope_enforcer
         self.fallback_service = fallback_service or ForecastFallbackService(
-            enable_fallback_cache=getattr(settings, "WEATHER_FALLBACK_CACHE_ENABLED", True)
+            enable_fallback_cache=False
         )
         self.audit_logger = audit_logger or default_audit_logger
         self.drift_monitor = drift_monitor or default_drift_monitor

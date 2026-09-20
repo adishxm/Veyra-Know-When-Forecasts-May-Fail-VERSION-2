@@ -481,8 +481,10 @@ def test_single_flight_leader_follower_synchronization():
 
     threads_count = 10
     results = [None] * threads_count
+    barrier = threading.Barrier(threads_count)
 
     def worker(i: int):
+        barrier.wait()
         results[i] = sf.do("test_key", slow_action)
 
     threads = [threading.Thread(target=worker, args=(i,)) for i in range(threads_count)]

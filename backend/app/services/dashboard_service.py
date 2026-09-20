@@ -251,6 +251,8 @@ class DashboardIntelligenceService:
         )
 
         agent = self._get_agent()
+        if hasattr(agent, "fallback_service") and hasattr(agent.fallback_service, "enable_fallback_cache"):
+            agent.fallback_service.enable_fallback_cache = getattr(settings, "WEATHER_FALLBACK_CACHE_ENABLED", True)
 
         # 3. Fetch weather data ONCE upfront
         #    WeatherResult is shared across all horizon workers, eliminating
