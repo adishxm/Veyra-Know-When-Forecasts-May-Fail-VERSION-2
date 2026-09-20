@@ -392,91 +392,171 @@ Simply double-click [`launch.bat`](file:///c:/Users/adity/OneDrive/Desktop/SIH26
 launch.bat
 ```
 
-This will:
-1. Display the **Team HEXARK** terminal dashboard.
-2. Initialize the FastAPI backend on port `8000`.
-3. Initialize the Vite frontend dev server on port `5173`.
-4. Automatically open the Veyra Sentinel dashboard in your browser.
-5. Cleanly shut down all servers and close both spawned terminal windows on keypress.
+**What `launch.bat` handles automatically:**
+1. Verifies **Python 3.10+** and **Node.js 18+** are installed and in system `PATH`.
+2. Checks backend dependencies and automatically runs `pip install -r requirements.txt` if any are missing.
+3. Checks `frontend/node_modules` and automatically runs `npm install` on first launch.
+4. Verifies model binary weights (`models/v3/lightgbm_v3_challenger.joblib`) are complete (1.0 MB) and not un-pulled stubs.
+5. Launches the **FastAPI Predictive Engine** on port `8000`.
+6. Launches the **Vite Sentinel Dashboard** on port `5173`.
+7. Opens `http://127.0.0.1:5173/Veyra-Know-When-Forecasts-May-Fail/` in your default browser.
+8. Cleanly terminates all servers and closes both spawned terminal windows on keypress.
 
 ---
 
-### Option B: Manual Setup
+### Option B: Manual Setup from Fresh Clone
+
+> [!IMPORTANT]
+> **Golden Architecture Rule: Always execute commands from the repository root (`SIH26079-RII`).**  
+> Do **NOT** `cd backend` before running `pytest` or `uvicorn`. Python resolves the `backend.app...` module hierarchy relative to the repository root. If you run from inside `backend/`, Python will fail with `ModuleNotFoundError: No module named 'backend'`.
 
 #### 1. Prerequisites
-- Python 3.10 or 3.11
-- Node.js 18+ and npm
+- **Python 3.10 or 3.11** (`python --version`)
+- **Node.js 18+ and npm** (`node --version`, `npm --version`)
+- **Git** (`git --version`)
 
-#### 2. Backend Setup
+#### 2. Step-by-Step Environment Setup
+
 ```bash
-# Clone the repository
+# 1. Clone the repository
 git clone https://github.com/adishxm/Veyra-Know-When-Forecasts-May-Fail-VERSION-2.git
 cd Veyra-Know-When-Forecasts-May-Fail-VERSION-2
 
-# Install Python dependencies
+# 2. Create and activate a Python virtual environment (recommended)
+# Windows (PowerShell):
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# Windows (Command Prompt):
+python -m venv .venv
+.venv\Scripts\activate.bat
+
+# Linux / macOS:
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3. Install Python dependencies (from project root)
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 
-# Start FastAPI server
-python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-#### 3. Frontend Setup
-```bash
+# 4. Install Frontend dependencies (inside frontend/)
 cd frontend
 npm install
-npm run dev
+cd ..
 ```
 
-Open [http://127.0.0.1:5173/Veyra-Know-When-Forecasts-May-Fail/](http://127.0.0.1:5173/Veyra-Know-When-Forecasts-May-Fail/) in your browser.
+#### 3. Starting the Servers Manually
+
+**Terminal 1 — Backend (from project root):**
+```bash
+python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+*Backend runs at `http://127.0.0.1:8000` | OpenAPI docs at `http://127.0.0.1:8000/docs`*
+
+**Terminal 2 — Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+*Frontend runs at `http://127.0.0.1:5173/Veyra-Know-When-Forecasts-May-Fail/`*
 
 ---
 
-## 14. Reproducibility & Phase Verification Suite
+## 14. Reproducibility & Complete Pytest Verification Suite
 
-Veyra Sentinel includes an automated verification suite containing **816 automated tests (758 backend + 58 frontend)** with a 100% pass rate:
+Veyra Sentinel includes an automated verification suite containing **816 automated tests (758 backend + 58 frontend)** with a **100% pass rate**.
+
+### 14.1 Running the Full Backend Test Suite
+
+From the **repository root**:
 
 ```bash
-# Run full backend test suite (758 tests)
+# Run all 758 backend tests (quiet mode)
 python -m pytest backend/tests/ -q
 
-# Run frontend vitest suite (58 tests)
-cd frontend && npm test -- --run && cd ..
+# Run all backend tests with detailed test names and status
+python -m pytest backend/tests/ -v
 
-# Run frontend production build validation
-cd frontend && npm run build && cd ..
+# Run with standard 'pytest' command (uses pytest.ini configuration)
+pytest -v
 ```
 
-### Official Roadmap Gate Verification Commands
+### 14.2 Running Specific Test Suites by Architecture / Gate
+
+| Test Domain | Target Blueprint Gate | Exact Pytest Command | Passing Tests |
+|:---|:---:|:---|:---:|
+| **All Tests (Full Regression)** | Gates 1–11 | `python -m pytest backend/tests/ -q` | **758 passed** |
+| **Western Disturbance Specialist** | Gate 6 | `python -m pytest backend/tests/test_western_disturbance_specialist.py backend/tests/test_hazard_routing.py -q` | **15 passed** |
+| **Heatwave & Severe Wind** | Gate 7 | `python -m pytest backend/tests/test_heatwave_specialist.py backend/tests/test_severe_wind_specialist.py backend/tests/test_hazard_manifest_registry.py -q` | **22 passed** |
+| **Spatial Reliability & Clusters** | Gate 8 | `python -m pytest backend/tests/test_spatial_reliability.py backend/tests/test_common_mode_detector.py -q` | **16 passed** |
+| **Calibration, OOD & Ground Truth** | Gate 9 | `python -m pytest backend/tests/test_hazard_calibration.py backend/tests/test_hazard_ood.py backend/tests/test_hazard_drift.py backend/tests/test_independent_truth.py -q` | **28 passed** |
+| **Cross-System & Version Shift** | Gate 10 | `python -m pytest backend/tests/test_multi_system.py backend/tests/test_model_version_shift.py backend/tests/test_production_hardening.py -q` | **37 passed** |
+| **Builder Parity & API Contracts** | Gate 10 | `python -m pytest backend/tests/test_api_contract.py backend/tests/test_builder_parity.py backend/tests/test_ui_reliability_fields.py -q` | **13 passed** |
+| **Frontier Challengers & Twin** | Gate 11 | `python -m pytest backend/tests/test_frontier_challengers.py backend/tests/test_evidence_graph.py backend/tests/test_counterfactual_reliability.py -q` | **12 passed** |
+| **Model Integrity & Safety** | Core | `python -m pytest backend/tests/test_v3_artifact_integrity.py backend/tests/test_v3_failure_safety.py -q` | **12 passed** |
+| **Security & RBAC Hardening** | Core | `python -m pytest backend/tests/test_phase9_security_hardening.py -q` | **24 passed** |
+
+### 14.3 Running Frontend Tests & Production Build
 
 ```bash
-# Gate 6: Western Disturbance Specialist
-python -m pytest backend/tests/test_western_disturbance_specialist.py backend/tests/test_hazard_routing.py -q
+# Run all 58 frontend vitest tests (from frontend/)
+cd frontend
+npm test -- --run
+cd ..
+
+# Validate frontend production build (type checking + Vite bundler)
+cd frontend
+npm run build
+cd ..
+```
+
+### 14.4 Official Roadmap Gate Verification Scripts
+
+In addition to unit tests, Veyra Sentinel provides standalone CLI verification scripts for deep scientific evaluation:
+
+```bash
+# Gate 6: Western Disturbance Evaluation
 python scripts/evaluate_western_disturbance.py --split test --bootstrap cycle
 
-# Gate 7: Heatwave & Severe Wind Specialists
-python -m pytest backend/tests/test_heatwave_specialist.py backend/tests/test_severe_wind_specialist.py backend/tests/test_hazard_manifest_registry.py -q
+# Gate 7: Heatwave & Severe Wind Evaluation
 python scripts/evaluate_heatwave_severe_wind.py --hazard all --bootstrap cycle
 
-# Gate 8: Spatial Reliability & Regional Common-Mode Clusters
-python -m pytest backend/tests/test_spatial_reliability.py backend/tests/test_common_mode_detector.py -q
+# Gate 8: Spatial Reliability Evaluation
 python scripts/evaluate_spatial_reliability.py --hazard all --bootstrap station
 
-# Gate 9: Hazard Calibration, OOD, Drift & Independent Ground Truth
-python -m pytest backend/tests/test_hazard_calibration.py backend/tests/test_hazard_ood.py backend/tests/test_hazard_drift.py backend/tests/test_independent_truth.py -q
+# Gate 9: Hazard Calibration & Drift Audits
 python scripts/run_hazard_calibration_audit.py --all-hazards --bootstrap cycle
 python scripts/run_hazard_drift_ood_audit.py --all-hazards
 
-# Gate 10: Cross-System Transfer, Operations & Promotion
-python -m pytest backend/tests/test_multi_system.py backend/tests/test_model_version_shift.py backend/tests/test_production_hardening.py -q
-python -m pytest backend/tests/test_api_contract.py backend/tests/test_builder_parity.py backend/tests/test_ui_reliability_fields.py -q
+# Gate 10: Cross-System Transfer & Operational Gate
 python scripts/evaluate_cross_system.py --all-hazards --bootstrap cycle
 python scripts/run_operational_gate.py --all-hazards
 
-# Gate 11: Frontier Challengers & Reliability Digital Twin
-python -m pytest backend/tests/test_frontier_challengers.py backend/tests/test_evidence_graph.py backend/tests/test_counterfactual_reliability.py -q
+# Gate 11: Frontier Challenger Ablation & Reliability Digital Twin
 python scripts/run_frontier_ablation.py --base all-certified-hazards --bootstrap cycle
 python scripts/replay_digital_twin.py --event historical --compare raw,v3,certified-veyra,frontier
 ```
+
+---
+
+### 14.5 Common Troubleshooting & FAQs
+
+#### Q1: `ModuleNotFoundError: No module named 'backend'`
+- **Cause:** You ran the command from inside the `backend/` directory or `PYTHONPATH` was not set.
+- **Fix:** Always `cd` to the repository root (`SIH26079-RII`) before running `python -m pytest` or `python -m uvicorn`.
+
+#### Q2: `pytest : The term 'pytest' is not recognized`
+- **Cause:** Pytest executable is installed in Python's `Scripts/` folder which is not in your system `PATH`.
+- **Fix:** Use `python -m pytest` instead of `pytest`. As long as Python is in PATH, `python -m pytest` always works.
+
+#### Q3: `MODEL_NOT_READY` / Model Hash Mismatch
+- **Cause:** An older clone had a 132-byte Git-LFS pointer stub instead of the full model binary.
+- **Fix:** Run `git pull origin main` or double-click `launch.bat`. Model binaries are now stored directly in Git (no LFS required).
+
+#### Q4: Frontend opens and immediately closes
+- **Cause:** `frontend/node_modules` was not installed on a fresh clone.
+- **Fix:** Run `cd frontend && npm install && cd ..` or double-click `launch.bat`, which now automatically installs dependencies if missing.
+
 
 ---
 
