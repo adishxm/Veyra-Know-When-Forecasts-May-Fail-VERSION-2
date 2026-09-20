@@ -137,10 +137,22 @@ class Builder2V3ModelAdapter(BaseModelService):
 
             if self.enforce_sha:
                 if self.model_sha256 not in ACCEPTED_MODEL_SHAS:
-                    self.init_error = (
-                        f"Model SHA-256 mismatch! Got: {self.model_sha256}, "
-                        f"expected: {EXPECTED_MODEL_SHA256}"
-                    )
+                    is_lfs = False
+                    try:
+                        if model_path.stat().st_size < 1024 and model_path.read_bytes().startswith(b"version https://git-lfs.github.com/spec/v1"):
+                            is_lfs = True
+                    except Exception:
+                        pass
+                    if is_lfs:
+                        self.init_error = (
+                            f"Model artifact '{model_path}' is an un-pulled Git-LFS pointer stub ({model_path.stat().st_size} bytes). "
+                            "Run 'git lfs pull' to restore binary weights."
+                        )
+                    else:
+                        self.init_error = (
+                            f"Model SHA-256 mismatch! Got: {self.model_sha256}, "
+                            f"expected: {EXPECTED_MODEL_SHA256}"
+                        )
                     self.is_ready = False
                     logger.critical(self.init_error)
                     return

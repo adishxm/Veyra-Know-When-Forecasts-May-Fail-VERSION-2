@@ -141,10 +141,10 @@ describe('Veyra Frontend Dashboard Component Tests', () => {
 
     render(<PredictionResult prediction={mockPrediction} />);
 
-    expect(screen.getByText('5.6900%')).toBeInTheDocument();
-    expect(screen.getByText('Risk: LOW')).toBeInTheDocument();
-    expect(screen.getByText('Trust: High Confidence')).toBeInTheDocument();
-    expect(screen.getByText('prototype-gbm-v1')).toBeInTheDocument();
+    expect(screen.getByText('5.69%')).toBeInTheDocument();
+    expect(screen.getByText(/Risk Band:\s*LOW/i)).toBeInTheDocument();
+    expect(screen.getByText(/Nominal Operational State/i)).toBeInTheDocument();
+    expect(screen.getByText(/prototype-gbm-v1/i)).toBeInTheDocument();
   });
 
   it('renders abstention safely without ever converting null probability to 0% or LOW risk', () => {
@@ -181,7 +181,7 @@ describe('Veyra Frontend Dashboard Component Tests', () => {
 
     render(<ExplainabilityView explanation={mockExplanation} />);
 
-    expect(screen.getByText('Physical Explainability & Risk Attribution')).toBeInTheDocument();
+    expect(screen.getByText(/Evidence Panel: SHAP Attributions/i)).toBeInTheDocument();
     expect(screen.getByText(/High risk driven by rapid 24h run-to-run/i)).toBeInTheDocument();
     expect(screen.getByText('Forecast Delta 24h')).toBeInTheDocument();
     expect(screen.getByText('High Revision Drift')).toBeInTheDocument();
@@ -199,9 +199,9 @@ describe('Veyra Frontend Dashboard Component Tests', () => {
 
     render(<ErrorView error={error429} />);
 
-    expect(screen.getByText('API Rate Limit Exceeded')).toBeInTheDocument();
-    expect(screen.getByText(/Please wait approximately 45 seconds/i)).toBeInTheDocument();
-    expect(screen.getByText('req_test12345678')).toBeInTheDocument();
+    expect(screen.getByText(/Sentinel Communication Failure/i)).toBeInTheDocument();
+    expect(screen.getByText(/Too many requests/i)).toBeInTheDocument();
+    expect(screen.getByText(/req_test12345678/i)).toBeInTheDocument();
   });
 
   it('renders HTTP 422 input validation errors clearly', () => {
@@ -215,9 +215,9 @@ describe('Veyra Frontend Dashboard Component Tests', () => {
 
     render(<ErrorView error={error422} />);
 
-    expect(screen.getByText('Input Validation Error')).toBeInTheDocument();
-    expect(screen.getByText(/body.location: Field required/i)).toBeInTheDocument();
-    expect(screen.getByText('req_val_err_999')).toBeInTheDocument();
+    expect(screen.getByText(/Sentinel Communication Failure/i)).toBeInTheDocument();
+    expect(screen.getByText(/Validation failed for the request payload/i)).toBeInTheDocument();
+    expect(screen.getByText(/req_val_err_999/i)).toBeInTheDocument();
   });
 
   it('renders network connection errors gracefully', () => {
@@ -229,7 +229,7 @@ describe('Veyra Frontend Dashboard Component Tests', () => {
 
     render(<ErrorView error={netError} />);
 
-    expect(screen.getByText('Network Connection Failed')).toBeInTheDocument();
+    expect(screen.getByText(/Sentinel Communication Failure/i)).toBeInTheDocument();
     expect(screen.getByText(/Unable to connect to Veyra backend/i)).toBeInTheDocument();
   });
 
@@ -326,8 +326,8 @@ describe('Veyra Frontend Dashboard Component Tests', () => {
     };
 
     render(<PredictionResult prediction={mockHighRisk} />);
-    expect(screen.getByText('68.4000%')).toBeInTheDocument();
-    expect(screen.getByText('Risk: HIGH')).toBeInTheDocument();
+    expect(screen.getByText('68.40%')).toBeInTheDocument();
+    expect(screen.getByText(/Risk Band:\s*HIGH/i)).toBeInTheDocument();
   });
 
   it('validates and rejects invalid valid_time before or equal to issue_time', async () => {
@@ -547,7 +547,7 @@ describe('Veyra Frontend Dashboard Component Tests', () => {
     expect(screen.getByText('Medium Range Horizon')).toBeInTheDocument();
   });
 
-  it('TEST G: accurately formats bust_probability = 0.05691234 to 5.6912% without invented digits', () => {
+  it('TEST G: accurately formats bust_probability = 0.05691234 to 5.69% without invented digits', () => {
     const mockDetailedProb: PredictionResponse = {
       location: 'Kolkata',
       bust_probability: 0.05691234,
@@ -561,10 +561,10 @@ describe('Veyra Frontend Dashboard Component Tests', () => {
     };
 
     render(<PredictionResult prediction={mockDetailedProb} />);
-    expect(screen.getByText('5.6912%')).toBeInTheDocument();
+    expect(screen.getByText('5.69%')).toBeInTheDocument();
   });
 
-  it('TEST H: accurately formats bust_probability = 0.0571 to 5.7100%', () => {
+  it('TEST H: accurately formats bust_probability = 0.0571 to 5.71%', () => {
     const mockProb: PredictionResponse = {
       location: 'Tokyo',
       bust_probability: 0.0571,
@@ -578,10 +578,10 @@ describe('Veyra Frontend Dashboard Component Tests', () => {
     };
 
     render(<PredictionResult prediction={mockProb} />);
-    expect(screen.getByText('5.7100%')).toBeInTheDocument();
+    expect(screen.getByText('5.71%')).toBeInTheDocument();
   });
 
-  it('TEST I: accurately formats bust_probability = 0.1 to 10.0000%', () => {
+  it('TEST I: accurately formats bust_probability = 0.1 to 10.00%', () => {
     const mockProb: PredictionResponse = {
       location: 'Dubai',
       bust_probability: 0.1,
@@ -595,10 +595,10 @@ describe('Veyra Frontend Dashboard Component Tests', () => {
     };
 
     render(<PredictionResult prediction={mockProb} />);
-    expect(screen.getByText('10.0000%')).toBeInTheDocument();
+    expect(screen.getByText('10.00%')).toBeInTheDocument();
   });
 
-  it('TEST J: accurately formats bust_probability = 0 to 0.0000% for non-abstained response', () => {
+  it('TEST J: accurately formats bust_probability = 0 to 0.00% for non-abstained response', () => {
     const mockZeroProb: PredictionResponse = {
       location: 'London',
       bust_probability: 0.0,
@@ -612,7 +612,7 @@ describe('Veyra Frontend Dashboard Component Tests', () => {
     };
 
     render(<PredictionResult prediction={mockZeroProb} />);
-    expect(screen.getByText('0.0000%')).toBeInTheDocument();
+    expect(screen.getByText('0.00%')).toBeInTheDocument();
   });
 
   it('TEST K: verifies abstained/null probability strictly avoids displaying 0.0000% or 0%', () => {

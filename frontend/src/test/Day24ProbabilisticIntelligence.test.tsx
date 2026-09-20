@@ -30,16 +30,15 @@ describe('Day 24 Probabilistic Intelligence UI Tests', () => {
 
   it('renders "Calibrated Bust Probability" card title', () => {
     render(<PredictionResult prediction={mockPrediction} />);
-    expect(screen.getByText('Calibrated Bust Probability')).toBeInTheDocument();
+    expect(screen.getByText(/Calibrated Bust Probability/i)).toBeInTheDocument();
   });
 
-  it('renders heuristic certainty and ambiguity labels with operational trust', () => {
+  it('renders operational trust banner and conformal certainty badges', () => {
     render(<PredictionResult prediction={mockPrediction} />);
-    expect(screen.getByTitle(/Probability Separation Score/i)).toBeInTheDocument();
-    expect(screen.getByTitle(/Decision Boundary Ambiguity/i)).toBeInTheDocument();
-    expect(screen.getByTitle(/Nominal Pipeline Integrity/i)).toBeInTheDocument();
-    expect(screen.getByText(/Certainty:\s*70\.0%/i)).toBeInTheDocument();
-    expect(screen.getByText(/Ambiguity:\s*30\.0%/i)).toBeInTheDocument();
+    expect(screen.getByText('Nominal Operational State')).toBeInTheDocument();
+    expect(screen.getByText('NORMAL')).toBeInTheDocument();
+    expect(screen.getByText(/±30\.0%\s*\(90%\s*Conformal\)/i)).toBeInTheDocument();
+    expect(screen.getByTitle(/Feature-distance and regime novelty score/i)).toBeInTheDocument();
   });
 
   it('renders "Reference Alert Guideline 28%" on the timeline with explanatory tooltip', () => {

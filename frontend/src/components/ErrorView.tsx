@@ -20,6 +20,7 @@ interface UiStateBannerProps {
   noveltyScore?: number;
   onRetry?: () => void;
   onSwitchToReplay?: () => void;
+  onDismiss?: () => void;
 }
 
 export const UiStateBanner: React.FC<UiStateBannerProps> = ({
@@ -31,6 +32,7 @@ export const UiStateBanner: React.FC<UiStateBannerProps> = ({
   noveltyScore,
   onRetry,
   onSwitchToReplay,
+  onDismiss,
 }) => {
   switch (state) {
     case 'LOADING':
@@ -292,6 +294,24 @@ export const UiStateBanner: React.FC<UiStateBannerProps> = ({
                 Retry
               </button>
             )}
+            {onDismiss && (
+              <button
+                onClick={onDismiss}
+                aria-label="Dismiss error"
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '4px',
+                  background: 'transparent',
+                  color: '#b91c1c',
+                  border: '1px solid #ef4444',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Dismiss error
+              </button>
+            )}
             {onSwitchToReplay && (
               <button
                 onClick={onSwitchToReplay}
@@ -324,7 +344,7 @@ interface ErrorViewProps {
 
 export const ErrorView: React.FC<ErrorViewProps> = ({
   error,
-  onDismiss: _onDismiss,
+  onDismiss,
   onRetry,
   onSwitchToReplay,
 }) => {
@@ -337,6 +357,7 @@ export const ErrorView: React.FC<ErrorViewProps> = ({
       requestId={error.request_id}
       onRetry={onRetry}
       onSwitchToReplay={onSwitchToReplay}
+      onDismiss={onDismiss}
     />
   );
 };

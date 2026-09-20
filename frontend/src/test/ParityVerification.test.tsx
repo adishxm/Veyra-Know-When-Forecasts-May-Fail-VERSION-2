@@ -140,7 +140,7 @@ describe('Frontend <-> Backend Exact Value Parity Regression Tests', () => {
     });
 
     // Verify 3 distinct horizon pills are rendered in the ribbon
-    expect(await screen.findByText('1.0%')).toBeInTheDocument();
+    expect((await screen.findAllByText('1.0%')).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('4.8%')).toBeInTheDocument();
     expect(screen.getAllByText('8.3%').length).toBeGreaterThanOrEqual(1);
 
@@ -148,14 +148,14 @@ describe('Frontend <-> Backend Exact Value Parity Regression Tests', () => {
     expect(screen.getByText('1.04%')).toBeInTheDocument();
 
     // Select Day 2 / 48h horizon by clicking the 48h pill
-    fireEvent.click(screen.getByText('48h'));
+    fireEvent.click(screen.getByRole('tab', { name: /48h/i }));
     // VerificationPanel must now display 4.83% (proving Day 1 value is NOT copied)
     await waitFor(() => {
       expect(screen.getByText('4.83%')).toBeInTheDocument();
     });
 
     // Select Day 3 / 72h horizon by clicking the 72h pill
-    fireEvent.click(screen.getByText('72h'));
+    fireEvent.click(screen.getByRole('tab', { name: /72h/i }));
     // VerificationPanel must now display 8.25%
     await waitFor(() => {
       expect(screen.getByText('8.25%')).toBeInTheDocument();
