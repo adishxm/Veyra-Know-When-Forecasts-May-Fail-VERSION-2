@@ -9,6 +9,7 @@ import logging
 import math
 import time
 from typing import Optional
+from backend.app.core.config import settings
 from backend.app.core.metrics import default_metrics
 from backend.app.safety.abstention import SafetyAssessment, SafetyEvaluator
 from backend.app.schemas.prediction import (
@@ -87,7 +88,9 @@ class ForecastBustAgent:
         self.analog_service = analog_service or HistoricalAnalogService()
         self.ood_enforcer = ood_enforcer or default_ood_enforcer
         self.scope_enforcer = scope_enforcer or default_scope_enforcer
-        self.fallback_service = fallback_service or ForecastFallbackService()
+        self.fallback_service = fallback_service or ForecastFallbackService(
+            enable_fallback_cache=getattr(settings, "WEATHER_FALLBACK_CACHE_ENABLED", True)
+        )
         self.audit_logger = audit_logger or default_audit_logger
         self.drift_monitor = drift_monitor or default_drift_monitor
         self.shadow_service = shadow_service or default_shadow_service

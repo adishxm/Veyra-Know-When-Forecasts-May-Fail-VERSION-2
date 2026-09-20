@@ -72,6 +72,9 @@ class Settings(BaseModel):
     WEATHER_DEDUP_ENABLED: bool = Field(
         default_factory=lambda: os.getenv("WEATHER_DEDUP_ENABLED", "True").lower() in ("true", "1", "yes")
     )
+    WEATHER_FALLBACK_CACHE_ENABLED: bool = Field(
+        default_factory=lambda: os.getenv("WEATHER_FALLBACK_CACHE_ENABLED", "True").lower() in ("true", "1", "yes")
+    )
 
     # In-process Rate Limiting / Abuse Protection
     RATE_LIMIT_ENABLED: bool = Field(

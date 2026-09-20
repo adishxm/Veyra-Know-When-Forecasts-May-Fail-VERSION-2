@@ -270,6 +270,11 @@ class DashboardIntelligenceService:
                 except TypeError:
                     weather_res = agent.get_weather_data(request.location, None)
 
+                if (weather_res is None or not weather_res.is_available or weather_res.error) and hasattr(agent, "fallback_service"):
+                    fb = agent.fallback_service.handle_download_failure(request.location)
+                    if fb.recovered and fb.weather_data:
+                        weather_res = fb.weather_data
+
                 if weather_res and weather_res.is_available and weather_res.raw_data:
                     raw_records = weather_res.raw_data.get("records", [])
                     if raw_records and base_issue_dt is None:
